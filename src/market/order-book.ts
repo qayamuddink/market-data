@@ -49,14 +49,24 @@ export class OrderBook {
         return bestAsk
     }
     
-    matchOrder(order: Order) : ExecuteTrade | undefined {
+    matchOrder(order: Order) : ExecuteTrade[] {
+        const trades: ExecuteTrade[] = [];
+
+        let remainingQuantity = order.quantity;
+
         if(order.side === "BUY") {
-            const bestAsk = this.getBestAsk();
+
+        // Incoming order is BUY.
+        // Therefore, we look for a SELL order.
+
+           while(remainingQuantity > 0){
+             const bestAsk = this.getBestAsk();
             if(!bestAsk) {
-                return undefined;
+                break;
             }
+            // buy price must be >= sell price
             if(order.price < bestAsk.price){
-                return undefined;
+                break;
             }
 
             const matchedOrder = bestAsk.orders[0];
@@ -64,45 +74,119 @@ export class OrderBook {
             //     return undefined
             // }
 
-            const 
             if (!matchedOrder) {
-                return undefined;
+                break;
+            }
+            const tradeQuantity = Math.min(
+                remainingQuantity,
+                matchedOrder.quantity
+            )
+
+            matchedOrder.quantity -= tradeQuantity;
+            remainingQuantity -= tradeQuantity;
+
+            console.log("remaining buy quantity:", remainingQuantity);
+            
+            // if(remainingQuantity > 0){
+            //     this.addOrder({
+            //         ...order,
+            //         quantity: remainingQuantity
+            //     })
+            // }
+
+            // sell order completely filled
+            if (matchedOrder.quantity === 0){
+                bestAsk.orders.shift()
             }
 
-            return {
-                id : `trade-${Date.now()}`,
+            //no sell orders left at this place
+            if(bestAsk.orders.length === 0){
+                this.asks.delete(bestAsk.price)
+            }
+
+            const trade: ExecuteTrade = {
+                id: `trade-${Date.now()}`,
                 symbol: order.symbol,
                 price: matchedOrder.price,
-                quantity: order.quantity,
+                quantity: tradeQuantity,
                 buyOrderId: order.id,
                 sellOrderId: matchedOrder.id,
                 timestamp: Date.now()
+            };
+            trades.push(trade)
+            
+           }
+
+           if (remainingQuantity > 0) {
+                this.addOrder({
+                    ...order,
+                    quantity: remainingQuantity
+                });
             }
+           return trades;
         }
 
+        while(remainingQuantity > 0){
+             // Incoming order is SELL.
+    // Therefore, we look for a BUY order.
         const bestBid = this.getBestBid();
             if(!bestBid) {
-                return undefined
+                break;
             }
-            
+             // SELL price must be <= BUY price
             if(order.price > bestBid?.price){
-                return undefined
+                break;
             }
 
             const matchedOrder = bestBid.orders[0];
             
-            if(order.quantity !== matchedOrder?.quantity) {
-                return undefined;
+            if(!matchedOrder) {
+                return trades;
+            }
+            const tradeQuantity = Math.min(
+                remainingQuantity,
+                matchedOrder.quantity
+            )
+
+            matchedOrder.quantity -= tradeQuantity;
+            remainingQuantity -= tradeQuantity;
+
+            //  remainingQuantity = order.quantity - tradeQuantity;
+
+            
+            
+            console.log("Remaining sell quantity: " ,remainingQuantity);
+            
+
+            if (matchedOrder.quantity === 0) {
+                bestBid.orders.shift()
             }
 
-            return {
+            if(bestBid.orders.length === 0){
+                this.bids.delete(bestBid.price)
+            }
+
+           const trade: ExecuteTrade = {
                 id: `trade-${Date.now()}`,
-                symbol: matchedOrder.symbol,
+                symbol: order.symbol,
                 price: matchedOrder.price,
-                quantity: order.quantity,
+                quantity: tradeQuantity,
                 buyOrderId: matchedOrder.id,
                 sellOrderId: order.id,
                 timestamp: Date.now()
-            }
+            };
+            trades.push(trade)
+        }
+
+        if(remainingQuantity > 0){
+            this.addOrder({
+                ...order,
+                quantity: remainingQuantity
+            })
+        }
+
+        return trades;
+
     }
+
 }

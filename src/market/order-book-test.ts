@@ -40,20 +40,36 @@ const buyOrder: Order = {
     symbol: "BTCUSDT",
     side: "BUY",
     type: "LIMIT",
-    price: 85000,
-    quantity: 0.01,
+    price: 85100,
+    quantity: 0.05,
     timestamp: Date.now()
 };
 
-const trade = orderBook.matchOrder(buyOrder);
 
-console.log("Executed Trade:", trade);
+const order5: Order = {
+    id: "order-5",
+    symbol: "BTCUSDT",
+    side: "SELL",
+    type: "LIMIT",
+    price: 85100,
+    quantity: 0.03,
+    timestamp: Date.now()
+};
+
 
 orderBook.addOrder(order1)
 orderBook.addOrder(order2)
 orderBook.addOrder(order3)
 
+orderBook.addOrder(order5);
+
 console.log(orderBook.getBook());
 
 console.log("Best Bid:", orderBook.getBestBid());
 console.log("Best Ask:", orderBook.getBestAsk());
+
+
+const trade = orderBook.matchOrder(buyOrder);
+
+console.log("Executed Trade:", trade);
+console.log("Order Book After Match:", orderBook.getBook());
