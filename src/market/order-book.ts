@@ -1,4 +1,6 @@
-import type { ExecuteTrade, Order , OrderBook as OrderBookType, PriceLevel } from "../types/order";
+import type { CancelResult, ExecuteTrade, MatchResult, Order , OrderBook as OrderBookType, OrderResult, OrderStatus, PriceLevel } from "../types/order";
+import { validateOrder } from "./order_validation";
+import { generateTradeId } from "./trade_id";
 
 export class OrderBook {
     private bids : Map<number,PriceLevel> = new Map();
@@ -49,7 +51,7 @@ export class OrderBook {
         return bestAsk
     }
     
-    matchOrder(order: Order) : ExecuteTrade[] {
+    matchOrder(order: Order) : MatchResult {
         const trades: ExecuteTrade[] = [];
 
         let remainingQuantity = order.quantity;
@@ -65,15 +67,12 @@ export class OrderBook {
                 break;
             }
             // buy price must be >= sell price
-            if(order.price < bestAsk.price){
+            if( order.type === "LIMIT" && order.price < bestAsk.price){
                 break;
             }
 
             const matchedOrder = bestAsk.orders[0];
-            // if(order.quantity !== matchedOrder?.quantity){
-            //     return undefined
-            // }
-
+            
             if (!matchedOrder) {
                 break;
             }
@@ -84,15 +83,6 @@ export class OrderBook {
 
             matchedOrder.quantity -= tradeQuantity;
             remainingQuantity -= tradeQuantity;
-
-            console.log("remaining buy quantity:", remainingQuantity);
-            
-            // if(remainingQuantity > 0){
-            //     this.addOrder({
-            //         ...order,
-            //         quantity: remainingQuantity
-            //     })
-            // }
 
             // sell order completely filled
             if (matchedOrder.quantity === 0){
@@ -105,7 +95,7 @@ export class OrderBook {
             }
 
             const trade: ExecuteTrade = {
-                id: `trade-${Date.now()}`,
+                id: generateTradeId(),
                 symbol: order.symbol,
                 price: matchedOrder.price,
                 quantity: tradeQuantity,
@@ -116,14 +106,10 @@ export class OrderBook {
             trades.push(trade)
             
            }
-
-           if (remainingQuantity > 0) {
-                this.addOrder({
-                    ...order,
-                    quantity: remainingQuantity
-                });
-            }
-           return trades;
+           return {
+            trades,
+            remainingQuantity
+           };
         }
 
         while(remainingQuantity > 0){
@@ -134,29 +120,22 @@ export class OrderBook {
                 break;
             }
              // SELL price must be <= BUY price
-            if(order.price > bestBid?.price){
+            if(order.type === "LIMIT" && order.price > bestBid.price){
                 break;
             }
 
             const matchedOrder = bestBid.orders[0];
             
             if(!matchedOrder) {
-                return trades;
+                break;
             }
             const tradeQuantity = Math.min(
                 remainingQuantity,
                 matchedOrder.quantity
             )
-
             matchedOrder.quantity -= tradeQuantity;
             remainingQuantity -= tradeQuantity;
-
-            //  remainingQuantity = order.quantity - tradeQuantity;
-
-            
-            
-            console.log("Remaining sell quantity: " ,remainingQuantity);
-            
+            //  remainingQuantity = order.quantity - tradeQuantity;    
 
             if (matchedOrder.quantity === 0) {
                 bestBid.orders.shift()
@@ -167,7 +146,7 @@ export class OrderBook {
             }
 
            const trade: ExecuteTrade = {
-                id: `trade-${Date.now()}`,
+                id: generateTradeId(),
                 symbol: order.symbol,
                 price: matchedOrder.price,
                 quantity: tradeQuantity,
@@ -178,15 +157,106 @@ export class OrderBook {
             trades.push(trade)
         }
 
-        if(remainingQuantity > 0){
+
+        return {
+            trades,
+            remainingQuantity
+        };
+
+    }
+
+    placeOrder (order: Order) : OrderResult {
+        const validateError = validateOrder(order);
+
+        if(validateError){
+            console.log("Order rejected: ", validateError);
+            return {
+                status: "REJECTED",
+                trades: [],
+                remainingQuantity: order.quantity
+            };
+        }
+        const result = this.matchOrder(order)
+
+        if(result.remainingQuantity > 0 && order.type === "LIMIT"){
             this.addOrder({
                 ...order,
-                quantity: remainingQuantity
+                quantity: result.remainingQuantity
             })
         }
 
-        return trades;
+        let status: OrderStatus;
 
+        if (result.trades.length === 0) {
+            status = "OPEN";
+        } else if (result.remainingQuantity > 0) {
+            status = "PARTIALLY_FILLED";
+        } else {
+            status = "FILLED";
+        }
+        return {
+            status,
+            trades: result.trades,
+            remainingQuantity: result.remainingQuantity
+        };
+    }
+
+
+    cancelOrder(orderId: string): CancelResult {
+
+        for (const [price, priceLevel] of this.bids) {
+
+            const orderIndex = priceLevel.orders.findIndex(
+                order => order.id === orderId
+            );
+
+            if (orderIndex !== -1) {
+
+                const order = priceLevel.orders[orderIndex]!;
+
+                priceLevel.orders.splice(orderIndex, 1);
+
+                if (priceLevel.orders.length === 0) {
+                    this.bids.delete(price);
+                }
+
+                return {
+                    success: true,
+                    orderId: orderId,
+                    remainingQuantity: order.quantity
+                };
+            }
+        }
+
+        for (const [price, priceLevel] of this.asks) {
+
+            const orderIndex = priceLevel.orders.findIndex(
+                order => order.id === orderId
+            );
+
+            if (orderIndex !== -1) {
+
+                const order = priceLevel.orders[orderIndex]!;
+
+                priceLevel.orders.splice(orderIndex, 1);
+
+                if (priceLevel.orders.length === 0) {
+                    this.asks.delete(price);
+                }
+
+                return {
+                    success: true,
+                    orderId: orderId,
+                    remainingQuantity: order.quantity
+                };
+            }
+        }
+
+        return {
+            success: false,
+            orderId: orderId,
+            remainingQuantity: 0
+        };
     }
 
 }

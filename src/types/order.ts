@@ -1,11 +1,11 @@
 export type OrderSide = "BUY" | "SELL";
-export type orderType = "LIMIT" |  "MARKET";
+export type OrderType = "LIMIT" |  "MARKET";
 
 export type Order = {
     id : string;
     symbol : string;
     side: OrderSide;
-    type: orderType;
+    type: OrderType;
     price: number;
     quantity: number;
     timestamp : number;
@@ -31,4 +31,27 @@ export type ExecuteTrade = {
     buyOrderId : string;
     sellOrderId: string;
     timestamp: number;
+}
+
+
+export type MatchResult = {
+    trades : ExecuteTrade[];
+    remainingQuantity: number
+}
+
+
+
+export type OrderStatus = "OPEN" |  "PARTIALLY_FILLED" | "FILLED" | "REJECTED"
+
+export type OrderResult = {
+    status: OrderStatus;
+    trades: ExecuteTrade[];
+    remainingQuantity: number;
+}
+
+
+export type CancelResult  = {
+    success : boolean;
+    orderId: string;
+    remainingQuantity: number;
 }
