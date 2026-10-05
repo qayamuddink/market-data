@@ -101,6 +101,8 @@ export class OrderBook {
                 quantity: tradeQuantity,
                 buyOrderId: order.id,
                 sellOrderId: matchedOrder.id,
+                buyAccountId: order.accountId,
+                sellAccountId: matchedOrder.accountId,
                 timestamp: Date.now()
             };
             trades.push(trade)
@@ -152,6 +154,8 @@ export class OrderBook {
                 quantity: tradeQuantity,
                 buyOrderId: matchedOrder.id,
                 sellOrderId: order.id,
+                buyAccountId: matchedOrder.accountId,
+                sellAccountId: order.accountId,
                 timestamp: Date.now()
             };
             trades.push(trade)
@@ -223,6 +227,9 @@ export class OrderBook {
                 return {
                     success: true,
                     orderId: orderId,
+                    accountId: order.accountId,
+                    side: order.side,
+                    price: order.price,
                     remainingQuantity: order.quantity
                 };
             }
@@ -247,6 +254,9 @@ export class OrderBook {
                 return {
                     success: true,
                     orderId: orderId,
+                    accountId: order.accountId,
+                    side: order.side,
+                    price: order.price,
                     remainingQuantity: order.quantity
                 };
             }

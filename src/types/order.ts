@@ -3,6 +3,7 @@ export type OrderType = "LIMIT" |  "MARKET";
 
 export type Order = {
     id : string;
+    accountId: string;
     symbol : string;
     side: OrderSide;
     type: OrderType;
@@ -30,6 +31,8 @@ export type ExecuteTrade = {
     quantity: number;
     buyOrderId : string;
     sellOrderId: string;
+    buyAccountId: string;
+    sellAccountId: string;
     timestamp: number;
 }
 
@@ -41,7 +44,7 @@ export type MatchResult = {
 
 
 
-export type OrderStatus = "OPEN" |  "PARTIALLY_FILLED" | "FILLED" | "REJECTED"
+export type OrderStatus = "OPEN" |  "PARTIALLY_FILLED" | "FILLED" | "CANCELLED"  | "REJECTED"
 
 export type OrderResult = {
     status: OrderStatus;
@@ -53,5 +56,8 @@ export type OrderResult = {
 export type CancelResult  = {
     success : boolean;
     orderId: string;
+    accountId?: string;
+    side?: OrderSide;
+    price?: number;
     remainingQuantity: number;
 }

@@ -21,6 +21,7 @@ const orderBook = new OrderBook();
 
 const order1 = createOrder(
     "order-1",
+    "user-1",
     "BTCUSDT",
     "BUY",
     "LIMIT",
@@ -31,6 +32,7 @@ const order1 = createOrder(
 
 const order2 = createOrder(
     "order-2",
+    "user-2",
     "BTCUSDT",
     "BUY",
     "LIMIT",
@@ -41,6 +43,7 @@ const order2 = createOrder(
 
 const order3 = createOrder(
     "order-3",
+    "user-3",
     "BTCUSDT",
     "SELL",
     "LIMIT",
@@ -51,6 +54,7 @@ const order3 = createOrder(
 
 const order5 = createOrder(
     "order-5",
+    "user-5",
     "BTCUSDT",
     "SELL",
     "LIMIT",
@@ -76,6 +80,7 @@ console.dir(orderBook.getBestAsk(), { depth: null });
 
 const buyOrder = createOrder(
     "order-4",
+    "user-1",
     "BTCUSDT",
     "BUY",
     "LIMIT",
@@ -110,6 +115,7 @@ console.log("\n===== TEST 2: ORDER VALIDATION =====");
 
 const validOrder = createOrder(
     "order-valid",
+    "user-1",
     "BTCUSDT",
     "BUY",
     "LIMIT",
@@ -123,6 +129,7 @@ console.log("Valid Order:", validateOrder(validOrder));
 
 const invalidOrder = createOrder(
     "order-invalid",
+    "user-1",
     "BTCUSDT",
     "BUY",
     "LIMIT",
@@ -141,6 +148,7 @@ console.dir(invalidResult, { depth: null });
 
 const marketOrder = createOrder(
     "order-6",
+    "user-1",
     "BTCUSDT",
     "BUY",
     "MARKET",
@@ -169,6 +177,7 @@ console.dir(cancelResult, { depth: null });
 
 const cancelSellOrder = createOrder(
     "order-10",
+    "user-2",
     "BTCUSDT",
     "SELL",
     "LIMIT",
@@ -204,6 +213,7 @@ const marketBuyBook = new OrderBook();
 
 const sellOrder20 = createOrder(
     "order-20",
+    "user-2",
     "BTCUSDT",
     "SELL",
     "LIMIT",
@@ -214,6 +224,7 @@ const sellOrder20 = createOrder(
 
 const sellOrder21 = createOrder(
     "order-21",
+    "user-2",
     "BTCUSDT",
     "SELL",
     "LIMIT",
@@ -228,6 +239,7 @@ marketBuyBook.addOrder(sellOrder21);
 
 const marketBuy = createOrder(
     "order-22",
+    "user-1",
     "BTCUSDT",
     "BUY",
     "MARKET",
@@ -255,6 +267,7 @@ const marketSellBook = new OrderBook();
 
 const buyOrder30 = createOrder(
     "order-30",
+    "user-1",
     "BTCUSDT",
     "BUY",
     "LIMIT",
@@ -265,6 +278,7 @@ const buyOrder30 = createOrder(
 
 const buyOrder31 = createOrder(
     "order-31",
+    "user-1",
     "BTCUSDT",
     "BUY",
     "LIMIT",
@@ -279,6 +293,7 @@ marketSellBook.addOrder(buyOrder31);
 
 const marketSell = createOrder(
     "order-32",
+    "user-2",
     "BTCUSDT",
     "SELL",
     "MARKET",
@@ -306,6 +321,7 @@ const openOrderBook = new OrderBook();
 
 const openOrder = createOrder(
     "order-40",
+    "user-1",
     "BTCUSDT",
     "BUY",
     "LIMIT",
@@ -333,6 +349,7 @@ const partialBook = new OrderBook();
 
 const partialSellOrder = createOrder(
     "order-41-sell",
+    "user-2",
     "BTCUSDT",
     "SELL",
     "LIMIT",
@@ -346,6 +363,7 @@ partialBook.addOrder(partialSellOrder);
 
 const partialBuyOrder = createOrder(
     "order-41",
+    "user-1",
     "BTCUSDT",
     "BUY",
     "LIMIT",
@@ -421,6 +439,7 @@ console.log("\n===== TEST 10: ORDER FACTORY =====");
 
 const factoryOrder = createOrder(
     "order-50",
+    "user-1",
     "BTCUSDT",
     "BUY",
     "LIMIT",

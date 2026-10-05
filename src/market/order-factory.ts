@@ -3,6 +3,7 @@ import { priceToUnits, quantityToUnits } from "./precision";
 
 export function createOrder(
     id: string,
+    accountId:string,
     symbol: string,
     side: OrderSide,
     type: OrderType,
@@ -12,6 +13,7 @@ export function createOrder(
 ): Order {
     return {
         id,
+        accountId,
         symbol,
         side,
         type,
