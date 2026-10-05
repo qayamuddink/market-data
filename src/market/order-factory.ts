@@ -9,7 +9,8 @@ export function createOrder(
     type: OrderType,
     price: number,
     quantity: number,
-    timestamp: number
+    timestamp: number,
+    maxQuoteAmount?: number
 ): Order {
     return {
         id,
@@ -19,6 +20,7 @@ export function createOrder(
         type,
         price: priceToUnits(price),
         quantity: quantityToUnits(quantity),
+        maxQuoteAmount,
         timestamp
     };
 }

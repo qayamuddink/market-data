@@ -11,73 +11,105 @@ export class OrderReservation {
     ) {}
 
     reserve(order: Order): void {
-        if (order.side === "BUY") {
-            const quoteUnits = calculateQuoteAmount(
-                order.price,
-                order.quantity
-            );
-
-            const quoteAmount = unitsToAmount(
-                "USDT",
-                quoteUnits
-            );
-
+    if (order.side === "BUY") {
+        if (
+            order.type === "MARKET" &&
+            order.maxQuoteAmount !== undefined
+        ) {
             this.accountManager.lockBalance(
                 order.accountId,
                 "USDT",
-                quoteAmount
+                order.maxQuoteAmount
             );
 
             return;
         }
 
-        const quantity = unitsToAmount(
-            "BTC",
+        const quoteUnits = calculateQuoteAmount(
+            order.price,
             order.quantity
+        );
+
+        const quoteAmount = unitsToAmount(
+            "USDT",
+            quoteUnits
         );
 
         this.accountManager.lockBalance(
             order.accountId,
-            "BTC",
-            quantity
+            "USDT",
+            quoteAmount
         );
+
+        return;
     }
 
+    const quantity = unitsToAmount(
+        "BTC",
+        order.quantity
+    );
+
+    this.accountManager.lockBalance(
+        order.accountId,
+        "BTC",
+        quantity
+    );
+}
+
     releaseExcessBuyReservation(
-        order: Order,
-        tradePrice: number,
-        tradeQuantity: number
-    ): void {
-        if (order.side !== "BUY") {
+    order: Order,
+    quoteSpent: number
+): void {
+    if (order.side !== "BUY") {
+        return;
+    }
+
+    if (
+        order.type === "MARKET" &&
+        order.maxQuoteAmount !== undefined
+    ) {
+        const excessAmount =
+            order.maxQuoteAmount - quoteSpent;
+
+        if (excessAmount <= 0) {
             return;
         }
-
-        const reservedUnits = calculateQuoteAmount(
-            order.price,
-            tradeQuantity
-        );
-
-        const actualUnits = calculateQuoteAmount(
-            tradePrice,
-            tradeQuantity
-        );
-
-        const excessUnits =
-            reservedUnits - actualUnits;
-
-        if (excessUnits <= 0) {
-            return;
-        }
-
-        const excessAmount = unitsToAmount(
-            "USDT",
-            excessUnits
-        );
 
         this.accountManager.unlockBalance(
             order.accountId,
             "USDT",
             excessAmount
         );
+
+        return;
     }
+
+    const reservedUnits = calculateQuoteAmount(
+        order.price,
+        order.quantity
+    );
+
+    const actualUnits = calculateQuoteAmount(
+        order.price,
+        order.quantity
+    );
+
+    const excessUnits =
+        reservedUnits - actualUnits;
+
+    if (excessUnits <= 0) {
+        return;
+    }
+
+    const excessAmount = unitsToAmount(
+        "USDT",
+        excessUnits
+    );
+
+    this.accountManager.unlockBalance(
+        order.accountId,
+        "USDT",
+        excessAmount
+    );
+}
 }

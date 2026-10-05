@@ -1,6 +1,7 @@
 import { AccountManager } from "../account/account";
 import { calculateQuoteAmount, unitsToAmount } from "../account/asset";
 import { OrderBook } from "../market/order-book";
+import { validateOrder } from "../market/order_validation";
 import { OrderReservation } from "../settlement/order_reservation";
 import { Settlement } from "../settlement/settlement";
 import type { Order, OrderResult } from "../types/order";
@@ -42,27 +43,129 @@ export class Exchange {
         )
     }
 
-    placeOrder(order: Order): OrderResult{
-        this.orderManager.addOrder(order);
+placeOrder(order: Order): OrderResult {
+    const validateError = validateOrder(order);
 
-        this.orderReservation.reserve(order);
+    if (validateError) {
+        console.log("Order rejected: ", validateError);
 
-        const result = this.orderBook.placeOrder(order);
+        return {
+            status: "REJECTED",
+            trades: [],
+            remainingQuantity: order.quantity
+        };
+    }
 
-        for(const trade of result.trades) {
-            this.settlement.settle(trade);
-            this.orderReservation.releaseExcessBuyReservation(
-                order,
-                trade.price,
-                trade.quantity
+    if (this.orderManager.getOrder(order.id)) {
+        throw new Error("Order already exists");
+    }
+
+    this.orderReservation.reserve(order);
+
+    this.orderManager.addOrder(order);
+
+    const result = this.orderBook.placeOrder(order);
+
+    for (const trade of result.trades) {
+
+        this.settlement.settle(trade);
+
+        const quoteUnits = calculateQuoteAmount(
+            trade.price,
+            trade.quantity
+        );
+
+        const quoteAmount = unitsToAmount(
+            "USDT",
+            quoteUnits
+        );
+
+        this.orderManager.addQuoteSpent(
+            trade.buyOrderId,
+            quoteAmount
+        );
+
+        this.orderManager.processTrades(
+            trade.buyOrderId,
+            trade.quantity
+        );
+
+        this.orderManager.processTrades(
+            trade.sellOrderId,
+            trade.quantity
+        );
+    }
+
+    // Release unused BUY reservation
+    // after all trades have been processed.
+    if (result.trades.length > 0) {
+
+        const buyOrderId = result.trades[0]!.buyOrderId;
+
+        const buyOrder = this.orderManager.getOrderData(
+            buyOrderId
+        );
+
+        if (!buyOrder) {
+            throw new Error("Buy order not found");
+        }
+
+        const managedBuyOrder = this.orderManager.getOrder(
+            buyOrderId
+        );
+
+        if (!managedBuyOrder) {
+            throw new Error("Buy order not found");
+        }
+
+        this.orderReservation.releaseExcessBuyReservation(
+            buyOrder,
+            managedBuyOrder.quoteSpent
+        );
+    }
+
+    // Release reservation for an unfilled MARKET order.
+    //
+    // IMPORTANT:
+    // If trades already happened, the unused BUY reservation
+    // was already released above.
+    //
+    // Therefore, for MARKET BUY we only unlock the full
+    // reservation when NO trade happened.
+    if (
+        order.type === "MARKET" &&
+        result.remainingQuantity > 0
+    ) {
+
+        if (
+            order.side === "BUY" &&
+            order.maxQuoteAmount !== undefined &&
+            result.trades.length === 0
+        ) {
+            this.accountManager.unlockBalance(
+                order.accountId,
+                "USDT",
+                order.maxQuoteAmount
+            );
+        }
+
+        if (order.side === "SELL") {
+
+            const remainingQuantity = unitsToAmount(
+                "BTC",
+                result.remainingQuantity
             );
 
-            this.orderManager.processTrades(trade.buyOrderId, trade.quantity);
-            this.orderManager.processTrades(trade.sellOrderId, trade.quantity);
+            this.accountManager.unlockBalance(
+                order.accountId,
+                "BTC",
+                remainingQuantity
+            );
         }
-        return result;
-        
     }
+
+    return result;
+}
 
 
     cancelOrder(orderId: string) {
@@ -109,6 +212,9 @@ export class Exchange {
         return this.orderManager.getOrder(orderId);
     }
 
+    getOrders() {
+            return this.orderManager.getOrders();
+    }
 
     getAccount(accountId: string) {
         return this.accountManager.getAccount(accountId)
@@ -117,5 +223,6 @@ export class Exchange {
     getOrderBook(){
         return this.orderBook.getBook()
     }
+
 
 }

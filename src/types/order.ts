@@ -9,6 +9,7 @@ export type Order = {
     type: OrderType;
     price: number;
     quantity: number;
+    maxQuoteAmount?: number;
     timestamp : number;
 }
 

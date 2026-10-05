@@ -8,12 +8,16 @@ export class AccountManager {
 
     createAccount(id: string): Account {
 
+        if(this.accounts.has(id)){
+            throw new Error("Account already exists");
+        }
+
         const account: Account = {
             id,
             balances: new Map()
         };
 
-        this.accounts.set(id, account);
+        this.accounts.set(id,account);
 
         return account;
     }

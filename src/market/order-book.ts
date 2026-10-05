@@ -1,3 +1,4 @@
+import { calculateQuoteAmount, unitsToAmount } from "../account/asset";
 import type { CancelResult, ExecuteTrade, MatchResult, Order , OrderBook as OrderBookType, OrderResult, OrderStatus, PriceLevel } from "../types/order";
 import { validateOrder } from "./order_validation";
 import { generateTradeId } from "./trade_id";
@@ -51,47 +52,76 @@ export class OrderBook {
         return bestAsk
     }
     
-    matchOrder(order: Order) : MatchResult {
-        const trades: ExecuteTrade[] = [];
+    matchOrder(order: Order): MatchResult {
+    const trades: ExecuteTrade[] = [];
 
-        let remainingQuantity = order.quantity;
+    let remainingQuantity = order.quantity;
 
-        if(order.side === "BUY") {
+    if (order.side === "BUY") {
 
         // Incoming order is BUY.
         // Therefore, we look for a SELL order.
 
-           while(remainingQuantity > 0){
-             const bestAsk = this.getBestAsk();
-            if(!bestAsk) {
+        let remainingQuoteAmount = order.maxQuoteAmount;
+
+        while (remainingQuantity > 0) {
+
+            const bestAsk = this.getBestAsk();
+
+            if (!bestAsk) {
                 break;
             }
-            // buy price must be >= sell price
-            if( order.type === "LIMIT" && order.price < bestAsk.price){
+
+            // BUY price must be >= SELL price
+            if (
+                order.type === "LIMIT" &&
+                order.price < bestAsk.price
+            ) {
                 break;
             }
 
             const matchedOrder = bestAsk.orders[0];
-            
+
             if (!matchedOrder) {
                 break;
             }
+
             const tradeQuantity = Math.min(
                 remainingQuantity,
                 matchedOrder.quantity
-            )
+            );
+
+            // MARKET BUY must not spend more than maxQuoteAmount
+            if (
+                order.type === "MARKET" &&
+                remainingQuoteAmount !== undefined
+            ) {
+                const quoteAmount = unitsToAmount(
+                    "USDT",
+                    calculateQuoteAmount(
+                        matchedOrder.price,
+                        tradeQuantity
+                    )
+                );
+
+                if (quoteAmount > remainingQuoteAmount) {
+                    break;
+                }
+
+                remainingQuoteAmount -= quoteAmount;
+            }
 
             matchedOrder.quantity -= tradeQuantity;
             remainingQuantity -= tradeQuantity;
 
-            // sell order completely filled
-            if (matchedOrder.quantity === 0){
-                bestAsk.orders.shift()
+            // SELL order completely filled
+            if (matchedOrder.quantity === 0) {
+                bestAsk.orders.shift();
             }
 
-            //no sell orders left at this place
-            if(bestAsk.orders.length === 0){
-                this.asks.delete(bestAsk.price)
+            // No SELL orders left at this price
+            if (bestAsk.orders.length === 0) {
+                this.asks.delete(bestAsk.price);
             }
 
             const trade: ExecuteTrade = {
@@ -105,69 +135,79 @@ export class OrderBook {
                 sellAccountId: matchedOrder.accountId,
                 timestamp: Date.now()
             };
-            trades.push(trade)
-            
-           }
-           return {
-            trades,
-            remainingQuantity
-           };
+
+            trades.push(trade);
         }
-
-        while(remainingQuantity > 0){
-             // Incoming order is SELL.
-    // Therefore, we look for a BUY order.
-        const bestBid = this.getBestBid();
-            if(!bestBid) {
-                break;
-            }
-             // SELL price must be <= BUY price
-            if(order.type === "LIMIT" && order.price > bestBid.price){
-                break;
-            }
-
-            const matchedOrder = bestBid.orders[0];
-            
-            if(!matchedOrder) {
-                break;
-            }
-            const tradeQuantity = Math.min(
-                remainingQuantity,
-                matchedOrder.quantity
-            )
-            matchedOrder.quantity -= tradeQuantity;
-            remainingQuantity -= tradeQuantity;
-            //  remainingQuantity = order.quantity - tradeQuantity;    
-
-            if (matchedOrder.quantity === 0) {
-                bestBid.orders.shift()
-            }
-
-            if(bestBid.orders.length === 0){
-                this.bids.delete(bestBid.price)
-            }
-
-           const trade: ExecuteTrade = {
-                id: generateTradeId(),
-                symbol: order.symbol,
-                price: matchedOrder.price,
-                quantity: tradeQuantity,
-                buyOrderId: matchedOrder.id,
-                sellOrderId: order.id,
-                buyAccountId: matchedOrder.accountId,
-                sellAccountId: order.accountId,
-                timestamp: Date.now()
-            };
-            trades.push(trade)
-        }
-
 
         return {
             trades,
             remainingQuantity
         };
-
     }
+
+    // Incoming order is SELL.
+    // Therefore, we look for a BUY order.
+
+    while (remainingQuantity > 0) {
+
+        const bestBid = this.getBestBid();
+
+        if (!bestBid) {
+            break;
+        }
+
+        // SELL price must be <= BUY price
+        if (
+            order.type === "LIMIT" &&
+            order.price > bestBid.price
+        ) {
+            break;
+        }
+
+        const matchedOrder = bestBid.orders[0];
+
+        if (!matchedOrder) {
+            break;
+        }
+
+        const tradeQuantity = Math.min(
+            remainingQuantity,
+            matchedOrder.quantity
+        );
+
+        matchedOrder.quantity -= tradeQuantity;
+        remainingQuantity -= tradeQuantity;
+
+        // BUY order completely filled
+        if (matchedOrder.quantity === 0) {
+            bestBid.orders.shift();
+        }
+
+        // No BUY orders left at this price
+        if (bestBid.orders.length === 0) {
+            this.bids.delete(bestBid.price);
+        }
+
+        const trade: ExecuteTrade = {
+            id: generateTradeId(),
+            symbol: order.symbol,
+            price: matchedOrder.price,
+            quantity: tradeQuantity,
+            buyOrderId: matchedOrder.id,
+            sellOrderId: order.id,
+            buyAccountId: matchedOrder.accountId,
+            sellAccountId: order.accountId,
+            timestamp: Date.now()
+        };
+
+        trades.push(trade);
+    }
+
+    return {
+        trades,
+        remainingQuantity
+    };
+}
 
     placeOrder (order: Order) : OrderResult {
         const validateError = validateOrder(order);
@@ -191,7 +231,11 @@ export class OrderBook {
 
         let status: OrderStatus;
 
-        if (result.trades.length === 0) {
+        if (result.remainingQuantity > 0 && order.type === "MARKET") {
+            status = result.trades.length > 0
+                ? "PARTIALLY_FILLED"
+                : "CANCELLED";
+        } else if (result.trades.length === 0) {
             status = "OPEN";
         } else if (result.remainingQuantity > 0) {
             status = "PARTIALLY_FILLED";

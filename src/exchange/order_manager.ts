@@ -5,17 +5,23 @@ export type ManagedOrder = {
     status: OrderStatus;
     originalQuantity: number;
     filledQuantity: number;
+    quoteSpent: number;
 };
 
 export class OrderManager {
     private orders: Map<string, ManagedOrder> = new Map();
 
     addOrder(order: Order): void {
+        if (this.orders.has(order.id)) {
+            throw new Error("Order already exists");
+        }
+
         this.orders.set(order.id, {
             order,
             status: "OPEN",
             originalQuantity: order.quantity,
-            filledQuantity: 0
+            filledQuantity: 0,
+            quoteSpent: 0
         });
     }
 
@@ -78,6 +84,21 @@ export class OrderManager {
 
         managedOrder.status = "CANCELLED";
     }
+
+    getOrderData(orderId: string) : Order | undefined {
+        return this.orders.get(orderId)?.order
+    }
+
+
+    addQuoteSpent(orderId: string, amount: number): void {
+    const managedOrder = this.orders.get(orderId);
+
+    if (!managedOrder) {
+        throw new Error("Order not found");
+    }
+
+    managedOrder.quoteSpent += amount;
+}
 
     
 }
