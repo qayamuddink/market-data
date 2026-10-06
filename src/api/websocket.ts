@@ -6,6 +6,16 @@ const wss = new WebSocketServer({
 
 const clients = new Set<WebSocket>();
 
+export function broadcast(event: object): void {
+    const message = JSON.stringify(event);
+
+    for (const client of clients) {
+        if (client.readyState === WebSocket.OPEN) {
+            client.send(message);
+        }
+    }
+}
+
 wss.on("connection", (ws) => {
     console.log("Client connected");
 
@@ -14,16 +24,10 @@ wss.on("connection", (ws) => {
     ws.on("message", (message) => {
         console.log("Received:", message.toString());
 
-        for (const client of clients) {
-            if (client.readyState === WebSocket.OPEN) {
-                client.send(
-                    JSON.stringify({
-                        type: "broadcast",
-                        message: message.toString()
-                    })
-                );
-            }
-        }
+        broadcast({
+            type: "broadcast",
+            message: message.toString()
+        });
     });
 
     ws.on("close", () => {
