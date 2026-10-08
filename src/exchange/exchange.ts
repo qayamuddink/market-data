@@ -1,5 +1,6 @@
 import { AccountManager } from "../account/account";
 import { calculateQuoteAmount, unitsToAmount } from "../account/asset";
+import { EventBus } from "../events/event_bus";
 import { OrderBook } from "../market/order-book";
 import { validateOrder } from "../market/order_validation";
 import { OrderReservation } from "../settlement/order_reservation";
@@ -14,7 +15,8 @@ export class Exchange {
     private orderReservation: OrderReservation;
     private settlement : Settlement;
     private orderManager: OrderManager;
-    constructor(){
+    private eventBus: EventBus;
+    constructor(eventBus: EventBus){
         this.orderBook = new OrderBook();
         this.accountManager = new AccountManager()
         this.orderReservation = new OrderReservation(
@@ -23,8 +25,14 @@ export class Exchange {
         this.settlement = new Settlement(
             this.accountManager
         );
+    
 
         this.orderManager = new OrderManager();
+        this.eventBus = eventBus;
+
+        // this.eventBus.subscribe((event) => {
+        //     console.log("Exchange event:", event);
+        // })
     }
 
     createAccount(accountId: string): void {
@@ -69,6 +77,17 @@ placeOrder(order: Order): OrderResult {
     for (const trade of result.trades) {
 
         this.settlement.settle(trade);
+
+        console.log("Publishing tradeExecuted event");
+
+
+        this.eventBus.publish({
+            type: "TradeExecuted",
+            trade,
+
+        })
+
+        
 
         const quoteUnits = calculateQuoteAmount(
             trade.price,

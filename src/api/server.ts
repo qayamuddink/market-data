@@ -8,11 +8,25 @@ import { ZodError } from "zod";
 import { FormatOrderResult } from "../market/order_result_formatter";
 import { formatOrderBook } from "../market/orderbook_fornatter";
 
-const app = express()
+import { EventBus } from "../events/event_bus";
+import { WebSocketManager } from "./websocket/websocket_manager";
+import { WebSocketServerManager } from "./websocket/websocket_server";
+
+const app = express();
 
 app.use(express.json());
 
-const exchange = new Exchange();
+const eventBus = new EventBus();
+
+const exchange = new Exchange(eventBus);
+
+const websocketManager = new WebSocketManager();
+
+new WebSocketServerManager(
+    eventBus,
+    websocketManager
+);
+
 
 app.post("/accounts" , (req,res) => {
     const {accountId} = req.body;
