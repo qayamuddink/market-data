@@ -3,6 +3,7 @@ import type { EventBus } from "../../events/event_bus";
 import type { WebSocketManager } from "./websocket_manager";
 import type { ClientMessage } from "./websocket_types";
 import { formatTrade } from "../../market/trade_formatter";
+import { formatOrderBook } from "../../market/orderbook_fornatter";
 
 
 export class WebSocketServerManager {
@@ -93,7 +94,22 @@ export class WebSocketServerManager {
                     }
                 );
             }
+
+            if (event.type === "OrderBookUpdated") {
+
+                this.websocketManager.broadcast(
+                    "orderbook",
+                    event.symbol,
+                    {
+                        type: "orderbook",
+                        symbol: event.symbol,
+                        orderBook: formatOrderBook(event.orderBook)
+                    }
+                );
+            }
         });
+
+        
 
         console.log(
             "WebSocket server started on port 8080"

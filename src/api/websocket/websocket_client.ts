@@ -12,7 +12,7 @@ ws.on("open", () => {
 
     ws.send(JSON.stringify({
         type: "subscribe",
-        channel: "trades",
+        channel: "orderbook",
         symbol: "BTCUSDT"
     }));
 });

@@ -1,3 +1,4 @@
+import { symbol } from "zod";
 import { AccountManager } from "../account/account";
 import { calculateQuoteAmount, unitsToAmount } from "../account/asset";
 import { EventBus } from "../events/event_bus";
@@ -74,7 +75,29 @@ placeOrder(order: Order): OrderResult {
 
     const result = this.orderBook.placeOrder(order);
 
+    this.eventBus.publish({
+    type: "OrderBookUpdated",
+    symbol: order.symbol,
+    orderBook: this.orderBook.getBook()
+});
+
     for (const trade of result.trades) {
+
+
+        if (result.trades.length > 0) {
+    const lastTrade = result.trades[result.trades.length - 1]!;
+
+    const bestBid = this.getBestBid();
+    const bestAsk = this.getBestAsk();
+
+    this.eventBus.publish({
+        type: "TickerUpdated",
+        symbol: order.symbol,
+        lastPrice: lastTrade.price,
+        bestBid: bestBid?.price,
+        bestAsk: bestAsk?.price
+    });
+}
 
         this.settlement.settle(trade);
 
@@ -244,4 +267,11 @@ placeOrder(order: Order): OrderResult {
     }
 
 
+    getBestBid() {
+        return this.orderBook.getBestBid();
+    }
+
+    getBestAsk() {
+        return this.orderBook.getBestAsk();
+    }
 }
