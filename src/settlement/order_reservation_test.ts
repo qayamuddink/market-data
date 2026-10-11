@@ -100,4 +100,11 @@ const expensiveOrder = createOrder(
     Date.now()
 );
 
-reservation.reserve(expensiveOrder);
+try {
+    reservation.reserve(expensiveOrder);
+} catch (error) {
+    console.log(
+        "\nExpected error:",
+        (error as Error).message
+    );
+}

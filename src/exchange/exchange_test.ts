@@ -1,7 +1,10 @@
 import { Exchange } from "./exchange";
 import { createOrder } from "../market/order-factory";
+import { EventBus } from "../events/event_bus";
 
-const exchange = new Exchange();
+
+const eventBus = new EventBus();
+const exchange = new Exchange(eventBus);
 
 
 // ===============================

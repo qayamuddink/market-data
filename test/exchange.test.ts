@@ -1,11 +1,19 @@
-import { describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import { Exchange } from "../src/exchange/exchange";
 import { createOrder } from "../src/market/order-factory";
+import { EventBus } from "../src/events/event_bus";
+
+let exchange: Exchange;
+
+beforeEach(() => {
+    const eventBus = new EventBus();
+    exchange = new Exchange(eventBus);
+})
 
 describe("Exchange", () => {
 
     test("should create an account", () => {
-        const exchange = new Exchange();
+       
 
         exchange.createAccount("alice");
 
@@ -16,7 +24,7 @@ describe("Exchange", () => {
     });
 
     test("should deposit USDT into an account", () => {
-        const exchange = new Exchange();
+        
 
         exchange.createAccount("alice");
 
@@ -38,7 +46,7 @@ describe("Exchange", () => {
     });
 
     test("should create an open BUY order", () => {
-        const exchange = new Exchange();
+       
 
         exchange.createAccount("alice");
 
@@ -73,7 +81,7 @@ describe("Exchange", () => {
     });
 
     test("should lock balance when BUY order is created", () => {
-        const exchange = new Exchange();
+        
 
         exchange.createAccount("alice");
 
@@ -105,7 +113,7 @@ describe("Exchange", () => {
     });
 
     test("should match BUY and SELL orders", () => {
-        const exchange = new Exchange();
+       
 
         exchange.createAccount("alice");
         exchange.createAccount("bob");
@@ -165,7 +173,7 @@ describe("Exchange", () => {
     });
 
     test("should settle balances after a trade", () => {
-        const exchange = new Exchange();
+       
 
         exchange.createAccount("alice");
         exchange.createAccount("bob");
@@ -228,7 +236,7 @@ describe("Exchange", () => {
     });
 
     test("should cancel an open BUY order and release balance", () => {
-        const exchange = new Exchange();
+        
 
         exchange.createAccount("alice");
 
@@ -281,7 +289,7 @@ describe("Exchange", () => {
     });
 
     test("should reject an order when balance is insufficient", () => {
-        const exchange = new Exchange();
+        
 
         exchange.createAccount("poor-user");
 
@@ -314,7 +322,7 @@ describe("Exchange", () => {
     });
 
     test("should reject duplicate account", () => {
-        const exchange = new Exchange();
+    
 
         exchange.createAccount("alice");
 
@@ -324,7 +332,7 @@ describe("Exchange", () => {
     });
 
     test("should reject duplicate order", () => {
-        const exchange = new Exchange();
+    
 
         exchange.createAccount("alice");
 
@@ -356,7 +364,7 @@ describe("Exchange", () => {
 
 
 test("should cancel MARKET BUY when there is no liquidity", () => {
-    const exchange = new Exchange();
+
 
     exchange.createAccount("alice");
 
@@ -395,7 +403,7 @@ test("should cancel MARKET BUY when there is no liquidity", () => {
 
 
 test("should cancel MARKET SELL when there is no liquidity", () => {
-    const exchange = new Exchange();
+
 
     exchange.createAccount("alice");
 
@@ -432,7 +440,7 @@ test("should cancel MARKET SELL when there is no liquidity", () => {
 
 
 test("should execute MARKET BUY against a resting SELL order", () => {
-    const exchange = new Exchange();
+    
 
     exchange.createAccount("seller");
     exchange.createAccount("buyer");
@@ -493,8 +501,7 @@ test("should execute MARKET BUY against a resting SELL order", () => {
 
 
 test("should execute MARKET SELL against a resting BUY order", () => {
-    const exchange = new Exchange();
-
+   
     exchange.createAccount("buyer");
     exchange.createAccount("seller");
 
@@ -553,7 +560,7 @@ test("should execute MARKET SELL against a resting BUY order", () => {
 
 
 test("should partially fill a LIMIT BUY order", () => {
-    const exchange = new Exchange();
+
 
     exchange.createAccount("buyer");
     exchange.createAccount("seller");
@@ -605,7 +612,7 @@ test("should partially fill a LIMIT BUY order", () => {
 
 
 test("should partially fill a LIMIT SELL order", () => {
-    const exchange = new Exchange();
+
 
     exchange.createAccount("buyer");
     exchange.createAccount("seller");
@@ -657,7 +664,7 @@ test("should partially fill a LIMIT SELL order", () => {
 
 
 test("should keep an unmatched LIMIT order in the order book", () => {
-    const exchange = new Exchange();
+
 
     exchange.createAccount("buyer");
 
@@ -690,7 +697,7 @@ test("should keep an unmatched LIMIT order in the order book", () => {
 
 
 test("should match the best price first", () => {
-    const exchange = new Exchange();
+
 
     exchange.createAccount("seller-1");
     exchange.createAccount("seller-2");
@@ -748,7 +755,7 @@ test("should match the best price first", () => {
 
 
 test("should preserve price-time priority at the same price", () => {
-    const exchange = new Exchange();
+   
 
     exchange.createAccount("seller-1");
     exchange.createAccount("seller-2");
@@ -805,7 +812,7 @@ test("should preserve price-time priority at the same price", () => {
 
 
 test("should execute a MARKET BUY across multiple SELL price levels", () => {
-    const exchange = new Exchange();
+
 
     exchange.createAccount("seller-1");
     exchange.createAccount("seller-2");
@@ -892,7 +899,7 @@ test("should execute a MARKET BUY across multiple SELL price levels", () => {
 
 
 test("should cancel a partially filled MARKET SELL and release remaining BTC", () => {
-    const exchange = new Exchange();
+
 
     exchange.createAccount("buyer");
     exchange.createAccount("seller");
@@ -939,7 +946,7 @@ test("should cancel a partially filled MARKET SELL and release remaining BTC", (
 
 
 test("should cancel a MARKET BUY when max quote amount is unused", () => {
-    const exchange = new Exchange();
+
 
     exchange.createAccount("buyer");
     exchange.createAccount("seller");
@@ -986,7 +993,7 @@ test("should cancel a MARKET BUY when max quote amount is unused", () => {
 
 
 test("should return not found when cancelling an unknown order", () => {
-    const exchange = new Exchange();
+    
 
     const result = exchange.cancelOrder("does-not-exist");
 
@@ -996,7 +1003,7 @@ test("should return not found when cancelling an unknown order", () => {
 
 
 test("should return an order by ID", () => {
-    const exchange = new Exchange();
+
 
     exchange.createAccount("buyer");
     exchange.addBalance("buyer", "USDT", 1000);
@@ -1026,7 +1033,7 @@ test("should return an order by ID", () => {
 
 
 test("should return all managed orders", () => {
-    const exchange = new Exchange();
+
 
     exchange.createAccount("buyer");
     exchange.addBalance("buyer", "USDT", 2000);
@@ -1068,7 +1075,7 @@ test("should return all managed orders", () => {
 
 
 test("should return the current order book", () => {
-    const exchange = new Exchange();
+
 
     exchange.createAccount("buyer");
     exchange.createAccount("seller");
@@ -1116,7 +1123,7 @@ test("should return the current order book", () => {
 
 
 test("should not exceed max quote amount for MARKET BUY", () => {
-    const exchange = new Exchange();
+
 
     exchange.createAccount("seller-1");
     exchange.createAccount("seller-2");

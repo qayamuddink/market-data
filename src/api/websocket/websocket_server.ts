@@ -4,6 +4,7 @@ import type { WebSocketManager } from "./websocket_manager";
 import type { ClientMessage } from "./websocket_types";
 import { formatTrade } from "../../market/trade_formatter";
 import { formatOrderBook } from "../../market/orderbook_fornatter";
+import { symbol } from "zod";
 
 
 export class WebSocketServerManager {
@@ -107,6 +108,21 @@ export class WebSocketServerManager {
                     }
                 );
             }
+
+            if(event.type === "TickerUpdated"){
+                this.websocketManager.broadcast(
+                    "ticker",
+                    event.symbol,
+                    {
+                        type: "ticker",
+                        symbol: event.symbol,
+                        lastprice:event.lastPrice,
+                        bestBid: event.bestBid,
+                        bestAsk: event.bestAsk
+                    }
+                )
+            }
+
         });
 
         
