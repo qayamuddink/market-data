@@ -141,4 +141,41 @@ export class AccountManager {
         balance.available += amountToUnits(asset, amount);
         account.balances.set(asset, balance);
     }
+
+    
+    getBalanceSnapshots(accountIds: string[]): {
+        accountId: string;
+        asset: string;
+        available: number;
+        locked: number;
+    }[] {
+        const snapshots: {
+            accountId: string;
+            asset: string;
+            available: number;
+            locked: number;
+        }[] = [];
+
+        for (const accountId of accountIds) {
+            const account = this.accounts.get(accountId);
+
+            if (!account) {
+                throw new Error("Account not found");
+            }
+
+            for (const [asset, balance] of account.balances) {
+                snapshots.push({
+                    accountId,
+                    asset,
+                    available: balance.available,
+                    locked: balance.locked
+                });
+            }
+        }
+
+        return snapshots;
+        
+    }   
+
+
 }
