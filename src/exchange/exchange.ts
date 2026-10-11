@@ -4,6 +4,7 @@ import {
     unitsToAmount
 } from "../account/asset";
 import { EventBus } from "../events/event_bus";
+import { MarketData } from "../market/market_data";
 import { OrderBook } from "../market/order-book";
 import { validateOrder } from "../market/order_validation";
 import { OrderReservation } from "../settlement/order_reservation";
@@ -21,23 +22,25 @@ export class Exchange {
     private settlement: Settlement;
     private orderManager: OrderManager;
     private eventBus: EventBus;
+    private marketData: MarketData;
 
     constructor(eventBus: EventBus) {
         this.orderBook = new OrderBook();
-
         this.accountManager = new AccountManager();
-
         this.orderReservation = new OrderReservation(
             this.accountManager
         );
-
         this.settlement = new Settlement(
             this.accountManager
         );
-
         this.orderManager = new OrderManager();
-
         this.eventBus = eventBus;
+        this.marketData = new MarketData();
+        this.eventBus.subscribe((event) => {
+            if(event.type === "TradeExecuted") {
+                this.marketData.addTrade(event.trade);
+            }
+        })
     }
 
     createAccount(accountId: string): void {
@@ -54,6 +57,27 @@ export class Exchange {
             asset,
             amount
         );
+    }
+
+    private publishOrderUpdated(orderId: string): void {
+        const order = this.orderManager.getOrder(orderId);
+
+        if (!order) {
+            throw new Error("Order not found");
+        }
+
+        this.eventBus.publish({
+            type: "OrderUpdated",
+            order: {
+                id: order.order.id,
+                accountId: order.order.accountId,
+                symbol: order.order.symbol,
+                status: order.status,
+                originalQuantity: order.originalQuantity,
+                filledQuantity: order.filledQuantity,
+                quoteSpent: order.quoteSpent
+            }
+        });
     }
 
     placeOrder(order: Order): OrderResult {
@@ -77,11 +101,13 @@ export class Exchange {
 
         this.orderManager.addOrder(order);
 
+        this.publishOrderUpdated(order.id);
+
         const result = this.orderBook.placeOrder(order);
 
         /*
-         * The order book has now changed.
-         * Publish the updated order book to subscribers.
+          The order book has now changed.
+          Publish the updated order book to subscribers.
          */
         this.eventBus.publish({
             type: "OrderBookUpdated",
@@ -90,28 +116,33 @@ export class Exchange {
         });
 
         /*
-         * Process every trade.
+          Process every trade.
          */
         for (const trade of result.trades) {
             /*
-             * Settle the trade:
-             *
-             * BUY  -> receive BTC, spend USDT
-             * SELL -> receive USDT, spend BTC
+              Settle the trade:
+             
+              BUY  -> receive BTC, spend USDT
+              SELL -> receive USDT, spend BTC
              */
             this.settlement.settle(trade);
 
             /*
-             * Notify subscribers that a trade happened.
+              Notify subscribers that a trade happened.
              */
+
+            // this.marketData.addTrade(trade);
+
             this.eventBus.publish({
                 type: "TradeExecuted",
                 trade
             });
 
+            
+
             /*
-             * Calculate how much USDT was spent
-             * by the BUY order for this trade.
+              Calculate how much USDT was spent
+              by the BUY order for this trade.
              */
             const quoteUnits = calculateQuoteAmount(
                 trade.price,
@@ -129,7 +160,7 @@ export class Exchange {
             );
 
             /*
-             * Update BUY order filled quantity.
+              Update BUY order filled quantity.
              */
             this.orderManager.processTrades(
                 trade.buyOrderId,
@@ -137,21 +168,32 @@ export class Exchange {
             );
 
             /*
-             * Update SELL order filled quantity.
+              Update SELL order filled quantity.
              */
             this.orderManager.processTrades(
                 trade.sellOrderId,
                 trade.quantity
             );
+
+            /*
+              Notify subscribers that both orders changed.
+             */
+            this.publishOrderUpdated(
+                trade.buyOrderId
+            );
+
+            this.publishOrderUpdated(
+                trade.sellOrderId
+            );
         }
 
         /*
-         * Ticker
-         *
-         * We only need one ticker update after all
-         * trades from this order have been processed.
-         *
-         * The last trade represents the latest traded price.
+          Ticker
+         
+            We only need one ticker update after all
+          trades from this order have been processed.
+         
+          The last trade represents the latest traded price.
          */
         if (result.trades.length > 0) {
             const lastTrade =
@@ -170,8 +212,8 @@ export class Exchange {
         }
 
         /*
-         * Release unused BUY reservation
-         * after all trades have been processed.
+          Release unused BUY reservation
+          after all trades have been processed.
          */
         if (result.trades.length > 0) {
             const buyOrderId =
@@ -203,20 +245,20 @@ export class Exchange {
 
         /*
          * Release reservation for an unfilled MARKET order.
-         *
-         * If trades already happened, the unused BUY
-         * reservation was already released above.
-         *
-         * Therefore, for MARKET BUY we only unlock the
-         * full reservation when NO trade happened.
+         
+          If trades already happened, the unused BUY
+          reservation was already released above.
+         
+          Therefore, for MARKET BUY we only unlock the
+          full reservation when NO trade happened.
          */
         if (
             order.type === "MARKET" &&
             result.remainingQuantity > 0
         ) {
             /*
-             * MARKET BUY with no trade:
-             * release the complete maxQuoteAmount.
+              MARKET BUY with no trade:
+              release the complete maxQuoteAmount.
              */
             if (
                 order.side === "BUY" &&
@@ -224,15 +266,15 @@ export class Exchange {
                 result.trades.length === 0
             ) {
                 this.accountManager.unlockBalance(
-                    order.accountId,
+                   order.accountId,
                     "USDT",
                     order.maxQuoteAmount
                 );
             }
 
             /*
-             * MARKET SELL with remaining quantity:
-             * release the remaining BTC reservation.
+              MARKET SELL with remaining quantity:
+              release the remaining BTC reservation.
              */
             if (order.side === "SELL") {
                 const remainingQuantity =
@@ -261,9 +303,9 @@ export class Exchange {
         }
 
         /*
-         * BUY order:
-         * unlock the USDT reserved for the
-         * remaining quantity.
+          BUY order:
+          unlock the USDT reserved for the
+          remaining quantity.
          */
         if (result.side === "BUY") {
             const quoteUnits =
@@ -285,8 +327,8 @@ export class Exchange {
             );
         } else {
             /*
-             * SELL order:
-             * unlock the remaining BTC.
+              SELL order:
+              unlock the remaining BTC.
              */
             const btcAmount =
                 unitsToAmount(
@@ -302,6 +344,8 @@ export class Exchange {
         }
 
         this.orderManager.cancelOrder(orderId);
+
+        this.publishOrderUpdated(orderId);
 
         return result;
     }
@@ -330,5 +374,10 @@ export class Exchange {
 
     getBestAsk() {
         return this.orderBook.getBestAsk();
+    }
+
+
+    getMarketData(): MarketData {
+        return this.marketData;
     }
 }

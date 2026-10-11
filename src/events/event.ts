@@ -11,6 +11,19 @@ export type OrderBookUpdatedEvent = {
     orderBook: OrderBook;
 };
 
+export type OrderUpdatedEvent = {
+    type: "OrderUpdated";
+    order: {
+        id: string;
+        accountId: string;
+        symbol: string;
+        status: string;
+        originalQuantity: number;
+        filledQuantity: number;
+        quoteSpent: number;
+    };
+};
+
 export type TickerUpdateEvent = {
     type: "TickerUpdated";
     symbol: string;
@@ -22,4 +35,5 @@ export type TickerUpdateEvent = {
 export type ExchangeEvent =
     | TradeExecutedEvent
     | OrderBookUpdatedEvent
-    | TickerUpdateEvent;
+    | TickerUpdateEvent
+    | OrderUpdatedEvent;

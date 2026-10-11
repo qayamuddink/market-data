@@ -11,6 +11,8 @@ import { formatOrderBook } from "../market/orderbook_fornatter";
 import { EventBus } from "../events/event_bus";
 import { WebSocketManager } from "./websocket/websocket_manager";
 import { WebSocketServerManager } from "./websocket/websocket_server";
+import { formatTrade } from "../market/trade_formatter";
+import { formatTicker } from "../market/ticker_formatter";
 
 const app = express();
 
@@ -24,7 +26,8 @@ const websocketManager = new WebSocketManager();
 
 new WebSocketServerManager(
     eventBus,
-    websocketManager
+    websocketManager,
+    exchange
 );
 
 
@@ -135,6 +138,35 @@ app.get("/orderbook", (req,res) => {
     res.json(formatOrderBook(orderBook));
 })
 
+app.get("/trades", (req, res) => {
+    const symbol = String(req.query.symbol);
+
+    const trades =
+        exchange
+            .getMarketData()
+            .getTrades(symbol);
+
+    res.json(
+        trades.map(formatTrade)
+    );
+});
+
+app.get("/ticker" , (req,res) => {
+    const symbol = String(req.query.symbol);
+    const lastPrice = exchange.getMarketData().getLastPrice(symbol);
+
+    const bestBid = exchange.getBestBid();
+    const bestAsk = exchange.getBestAsk();
+     res.json(
+        formatTicker({
+            symbol,
+            lastPrice: lastPrice ?? 0,
+            bestBid: bestBid?.price,
+            bestAsk: bestAsk?.price
+        })
+    )
+})
+
 app.use(
     (
         err: Error,
@@ -159,5 +191,7 @@ app.use(
         });
     }
 );
+
+
 
 export {app}

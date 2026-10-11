@@ -5,20 +5,18 @@ const ws = new WebSocket(
 );
 
 ws.on("open", () => {
-
     console.log(
         "Connected to WebSocket server"
     );
 
     ws.send(JSON.stringify({
         type: "subscribe",
-        channel: "orderbook",
-        symbol: "BTCUSDT"
+        channel: "orders",
+        accountId: "ticker-buyer"
     }));
 });
 
 ws.on("message", (message) => {
-
     console.log(
         "Server response:",
         message.toString()
@@ -26,11 +24,9 @@ ws.on("message", (message) => {
 });
 
 ws.on("close", () => {
-
     console.log("Connection closed");
 });
 
 ws.on("error", (error) => {
-
     console.log("WebSocket error:", error);
 });
