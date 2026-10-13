@@ -100,5 +100,27 @@ export class OrderManager {
     managedOrder.quoteSpent += amount;
 }
 
+
+getPersistenceRecord(orderId: string): {
+    orderId: string;
+    status: OrderStatus;
+    remainingQuantity: number;
+} {
+    const managedOrder = this.orders.get(orderId);
+
+    if (!managedOrder) {
+        throw new Error("Order not found");
+    }
+
+    return {
+        orderId,
+        status: managedOrder.status,
+        remainingQuantity:
+            managedOrder.originalQuantity -
+            managedOrder.filledQuantity
+    };
+}
+
+
     
 }
