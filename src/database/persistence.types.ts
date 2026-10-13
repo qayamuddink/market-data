@@ -32,3 +32,8 @@ export interface ExchangePersistence {
         execution: OrderExecutionCommit
     ): Promise<void>;
 }
+
+
+export interface AccountPersistence {
+    createAccount(accountId: string): Promise<void>;
+};

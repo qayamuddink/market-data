@@ -398,6 +398,7 @@ test("should cancel MARKET BUY when there is no liquidity", () => {
 
     expect(usdt?.available).toBe(100_000);
     expect(usdt?.locked).toBe(0);
+    expect(exchange.getOrder(order.id)?.status).toBe("CANCELLED");
 });
 
 

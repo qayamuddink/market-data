@@ -231,3 +231,25 @@ test("persists an order execution successfully", async () => {
         await sql`DELETE FROM accounts WHERE id = ${sellerId}`;
     }
 });
+
+
+
+test("persists an account successfully", async () => {
+    const accountId = `account-${crypto.randomUUID()}`;
+
+    await persistence.createAccount(accountId);
+
+    const accounts = await sql`
+        SELECT id
+        FROM accounts
+        WHERE id = ${accountId}
+    `;
+
+    expect(accounts).toHaveLength(1);
+    expect(accounts[0]!.id).toBe(accountId);
+
+    await sql`
+        DELETE FROM accounts
+        WHERE id = ${accountId}
+    `;
+});

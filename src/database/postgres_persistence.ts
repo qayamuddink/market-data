@@ -6,6 +6,15 @@ import type {
 } from "./persistence.types";
 
 export class PostgresPersistence implements ExchangePersistence {
+
+
+    async createAccount(accountId: string): Promise<void> {
+        await sql`
+            INSERT INTO accounts (id)
+            VALUES (${accountId})
+        `;
+    }
+
     async commitOrderExecution(
         execution: OrderExecutionCommit
     ): Promise<void> {

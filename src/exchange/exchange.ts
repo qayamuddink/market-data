@@ -3,6 +3,8 @@ import {
     calculateQuoteAmount,
     unitsToAmount
 } from "../account/asset";
+import type { AccountPersistence } from "../database/persistence.types";
+
 import { EventBus } from "../events/event_bus";
 import { MarketData } from "../market/market_data";
 import { OrderBook } from "../market/order-book";
@@ -24,27 +26,33 @@ export class Exchange {
     private eventBus: EventBus;
     private marketData: MarketData;
 
-    constructor(eventBus: EventBus) {
+    private persistence: AccountPersistence | null;
+
+    constructor(
+        eventBus: EventBus,
+        persistence: AccountPersistence | null = null
+    ) {
         this.orderBook = new OrderBook();
         this.accountManager = new AccountManager();
-        this.orderReservation = new OrderReservation(
-            this.accountManager
-        );
-        this.settlement = new Settlement(
-            this.accountManager
-        );
+        this.orderReservation = new OrderReservation(this.accountManager);
+        this.settlement = new Settlement(this.accountManager);
         this.orderManager = new OrderManager();
         this.eventBus = eventBus;
         this.marketData = new MarketData();
+        this.persistence = persistence;
+
         this.eventBus.subscribe((event) => {
-            if(event.type === "TradeExecuted") {
+            if (event.type === "TradeExecuted") {
                 this.marketData.addTrade(event.trade);
             }
-        })
+        });
+    }
+    async createAccount(accountId: string): Promise<void> {
+    if (this.persistence) {
+        await this.persistence.createAccount(accountId);
     }
 
-    createAccount(accountId: string): void {
-        this.accountManager.createAccount(accountId);
+    this.accountManager.createAccount(accountId);
     }
 
     addBalance(
@@ -104,6 +112,10 @@ export class Exchange {
         this.publishOrderUpdated(order.id);
 
         const result = this.orderBook.placeOrder(order);
+
+        if (result.status === "CANCELLED") {
+            this.orderManager.updateOrderStatus(order.id, "CANCELLED");
+        }
 
         /*
           The order book has now changed.
