@@ -611,6 +611,53 @@ test("should partially fill a LIMIT BUY order", () => {
 });
 
 
+test("should update a resting SELL order after a partial fill", () => {
+    exchange.createAccount("seller");
+    exchange.createAccount("buyer");
+
+    exchange.addBalance("seller", "BTC", 0.02);
+    exchange.addBalance("buyer", "USDT", 2000);
+
+    const sellOrder = createOrder(
+        "resting-sell",
+        "seller",
+        "BTCUSDT",
+        "SELL",
+        "LIMIT",
+        85000,
+        0.02,
+        Date.now()
+    );
+
+    exchange.placeOrder(sellOrder);
+
+    const buyOrder = createOrder(
+        "incoming-buy",
+        "buyer",
+        "BTCUSDT",
+        "BUY",       // side
+        "LIMIT",     // type
+        85000,       // price
+        0.01,        // quantity
+        Date.now()   // timestamp
+    );
+
+    const result = exchange.placeOrder(buyOrder);
+
+    expect(result.status).toBe("FILLED");
+    expect(result.trades).toHaveLength(1);
+
+    const restingOrder = exchange.getOrder("resting-sell");
+    const orderBook = exchange.getOrderBook();
+    const remainingSell =
+        orderBook.asks.get(8_500_000)?.orders[0];
+
+    expect(restingOrder?.status).toBe("PARTIALLY_FILLED");
+    expect(restingOrder?.filledQuantity).toBe(1_000_000);
+    expect(remainingSell?.quantity).toBe(1_000_000);
+});
+
+
 test("should partially fill a LIMIT SELL order", () => {
 
 
