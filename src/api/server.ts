@@ -13,6 +13,7 @@ import { WebSocketManager } from "./websocket/websocket_manager";
 import { WebSocketServerManager } from "./websocket/websocket_server";
 import { formatTrade } from "../market/trade_formatter";
 import { formatTicker } from "../market/ticker_formatter";
+import { PostgresPersistence } from "../database/postgres_persistence";
 
 const app = express();
 
@@ -20,7 +21,10 @@ app.use(express.json());
 
 const eventBus = new EventBus();
 
-const exchange = new Exchange(eventBus);
+const exchange = new Exchange(
+    eventBus,
+    new PostgresPersistence
+);
 
 const websocketManager = new WebSocketManager();
 
@@ -31,10 +35,10 @@ new WebSocketServerManager(
 );
 
 
-app.post("/accounts" , (req,res) => {
+app.post("/accounts" , async(req,res) => {
     const {accountId} = req.body;
 
-    exchange.createAccount(accountId);
+    await exchange.createAccount(accountId);
 
     res.json({
         id: accountId
