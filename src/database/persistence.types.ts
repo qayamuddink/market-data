@@ -34,6 +34,9 @@ export interface ExchangePersistence {
 }
 
 
+
 export interface AccountPersistence {
     createAccount(accountId: string): Promise<void>;
-};
+    getAccountIds(): Promise<string[]>;
+    getBalances(): Promise<BalanceSnapshot[]>;
+}

@@ -56,55 +56,33 @@ export class OrderReservation {
     );
 }
 
-    releaseExcessBuyReservation(
+
+releaseLimitBuyPriceImprovement(
     order: Order,
-    quoteSpent: number
+    quantity: number,
+    executionPrice: number
 ): void {
-    if (order.side !== "BUY") {
-        return;
-    }
-
-    if (
-        order.type === "MARKET" &&
-        order.maxQuoteAmount !== undefined
-    ) {
-        const excessAmount =
-            order.maxQuoteAmount - quoteSpent;
-
-        if (excessAmount <= 0) {
-            return;
-        }
-
-        this.accountManager.unlockBalance(
-            order.accountId,
-            "USDT",
-            excessAmount
-        );
-
+    if (order.side !== "BUY" || order.type !== "LIMIT") {
         return;
     }
 
     const reservedUnits = calculateQuoteAmount(
         order.price,
-        order.quantity
+        quantity
     );
 
     const actualUnits = calculateQuoteAmount(
-        order.price,
-        order.quantity
+        executionPrice,
+        quantity
     );
 
-    const excessUnits =
-        reservedUnits - actualUnits;
+    const excessUnits = reservedUnits - actualUnits;
 
     if (excessUnits <= 0) {
         return;
     }
 
-    const excessAmount = unitsToAmount(
-        "USDT",
-        excessUnits
-    );
+    const excessAmount = unitsToAmount("USDT", excessUnits);
 
     this.accountManager.unlockBalance(
         order.accountId,
@@ -112,4 +90,31 @@ export class OrderReservation {
         excessAmount
     );
 }
+
+releaseExcessBuyReservation(
+    order: Order,
+    quoteSpent: number
+): void {
+    if (
+        order.side !== "BUY" ||
+        order.type !== "MARKET" ||
+        order.maxQuoteAmount === undefined
+    ) {
+        return;
+    }
+
+    const excessAmount = order.maxQuoteAmount - quoteSpent;
+
+    if (excessAmount <= 0) {
+        return;
+    }
+
+    this.accountManager.unlockBalance(
+        order.accountId,
+        "USDT",
+        excessAmount
+    );
+}
+
+  
 }

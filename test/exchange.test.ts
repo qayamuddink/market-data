@@ -321,14 +321,14 @@ describe("Exchange", () => {
         expect(savedOrder).toBeUndefined();
     });
 
-    test("should reject duplicate account", () => {
-    
+    test("should reject duplicate account", async () => {
+        const exchange = new Exchange(new EventBus());
 
-        exchange.createAccount("alice");
+        await exchange.createAccount("alice");
 
-        expect(() => {
-            exchange.createAccount("alice");
-        }).toThrow("Account already exists");
+        await expect(
+            exchange.createAccount("alice")
+        ).rejects.toThrow("Account already exists");
     });
 
     test("should reject duplicate order", () => {

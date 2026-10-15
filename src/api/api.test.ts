@@ -1,12 +1,51 @@
 import { beforeAll, afterAll, test, expect } from "bun:test";
 import type { Server } from "node:http";
 import { app } from "./server";
+import { sql } from "bun";
 
 
 let server: Server;
 let baseUrl: string;
 
-beforeAll(() => {
+async function cleanupApiTestData() {
+    await sql.begin(async (tx) => {
+        await tx`
+            DELETE FROM trades
+            WHERE buy_order_id IN (
+                SELECT id FROM orders
+                WHERE account_id LIKE 'api-%'
+            )
+            OR sell_order_id IN (
+                SELECT id FROM orders
+                WHERE account_id LIKE 'api-%'
+            )
+        `;
+
+        await tx`
+            DELETE FROM orders
+            WHERE account_id LIKE 'api-%'
+        `;
+
+        await tx`
+            DELETE FROM deposits
+            WHERE account_id LIKE 'api-%'
+        `;
+
+        await tx`
+            DELETE FROM balances
+            WHERE account_id LIKE 'api-%'
+        `;
+
+        await tx`
+            DELETE FROM accounts
+            WHERE id LIKE 'api-%'
+        `;
+    });
+}
+
+beforeAll(async () => {
+    await cleanupApiTestData();
+
     server = app.listen(0);
 
     const address = server.address();
@@ -18,8 +57,19 @@ beforeAll(() => {
     baseUrl = `http://localhost:${address.port}`;
 });
 
-afterAll(() => {
-    server.close();
+afterAll(async () => {
+    await new Promise<void>((resolve, reject) => {
+        server.close((error) => {
+            if (error) {
+                reject(error);
+                return;
+            }
+
+            resolve();
+        });
+    });
+
+    await cleanupApiTestData();
 });
 
 async function request(

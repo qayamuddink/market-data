@@ -1,5 +1,5 @@
 
-import { afterAll, test, expect } from "bun:test";
+import {  test, expect } from "bun:test";
 import { sql } from "./client";
 import { PostgresPersistence } from "./postgres_persistence";
 import type { OrderExecutionCommit } from "./persistence.types";
@@ -14,9 +14,6 @@ const newOrderId = `test-buy-order-${suffix}`;
 const restingOrderId = `test-sell-order-${suffix}`;
 const tradeId = `test-trade-${suffix}`;
 
-afterAll(async () => {
-    await sql.end();
-});
 
 test("rolls back all writes when a balance update fails", async () => {
     await sql`

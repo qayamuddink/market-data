@@ -178,4 +178,33 @@ export class AccountManager {
     }   
 
 
+    restoreAccount(account: Account): void {
+    if (this.accounts.has(account.id)) {
+        throw new Error("Account already exists");
+    }
+
+    this.accounts.set(account.id, account);
+}
+
+
+restoreBalance(
+        accountId: string,
+        asset: Asset,
+        available: number,
+        locked: number
+    ): void {
+        const account = this.accounts.get(accountId);
+
+        if (!account) {
+            throw new Error("Account not found");
+        }
+
+        account.balances.set(asset, {
+            available,
+            locked
+        });
+    }
+
+
+
 }

@@ -1,6 +1,7 @@
 
 import { sql } from "./client";
 import type {
+    BalanceSnapshot,
     ExchangePersistence,
     OrderExecutionCommit,
 } from "./persistence.types";
@@ -14,6 +15,33 @@ export class PostgresPersistence implements ExchangePersistence {
             VALUES (${accountId})
         `;
     }
+
+
+    async getAccountIds(): Promise<string[]> {
+        const rows = await sql`
+            SELECT id FROM accounts
+        `;
+
+        return rows.map(row => row.id as string);
+    }
+
+
+async getBalances(): Promise<BalanceSnapshot[]> {
+    const rows = await sql`
+        SELECT account_id, asset, available, locked
+        FROM balances
+    `;
+
+    return rows.map(row => ({
+        accountId: row.account_id as string,
+        asset: row.asset as string,
+        available: Number(row.available),
+        locked: Number(row.locked)
+    }));
+}
+
+
+
 
     async commitOrderExecution(
         execution: OrderExecutionCommit

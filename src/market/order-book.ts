@@ -1,240 +1,284 @@
 import { calculateQuoteAmount, unitsToAmount } from "../account/asset";
-import type { CancelResult, ExecuteTrade, MatchResult, Order , OrderBook as OrderBookType, OrderResult, OrderStatus, PriceLevel } from "../types/order";
+import type {
+    CancelResult,
+    ExecuteTrade,
+    MatchResult,
+    Order,
+    OrderBook as OrderBookType,
+    OrderResult,
+    OrderStatus,
+    PriceLevel,
+} from "../types/order";
 import { validateOrder } from "./order_validation";
 import { generateTradeId } from "./trade_id";
 
 export class OrderBook {
-    private bids : Map<number,PriceLevel> = new Map();
-    private asks : Map<number, PriceLevel> = new Map();
+    // Each symbol has its own bids and asks.
+    private bids: Map<string, Map<number, PriceLevel>> = new Map();
+    private asks: Map<string, Map<number, PriceLevel>> = new Map();
 
-    addOrder (order : Order): void{
-        const book = order.side === "BUY"
-            ? this.bids : this.asks
+    addOrder(order: Order): void {
+        const books = order.side === "BUY" ? this.bids : this.asks;
+        let book = books.get(order.symbol);
 
-            const priceLevel = book.get(order.price);
-            
-            if (priceLevel) {
-                priceLevel.orders.push(order)
-                return
-            }
-            book.set(order.price,{
-                price:order.price,
-                orders:[order]
-            })
+        if (!book) {
+            book = new Map<number, PriceLevel>();
+            books.set(order.symbol, book);
         }
 
-    getBook() : OrderBookType {
-        return {
-           bids: this.bids,
-           asks: this.asks
+        const priceLevel = book.get(order.price);
+
+        if (priceLevel) {
+            // Appending preserves FIFO time priority at this price.
+            priceLevel.orders.push(order);
+            return;
         }
+
+        book.set(order.price, {
+            price: order.price,
+            orders: [order],
+        });
     }
 
-    getBestBid(): PriceLevel | undefined {
-        let bestBid: PriceLevel | undefined;
+    getBook(symbol?: string): OrderBookType {
+        if (symbol) {
+            return {
+                bids: this.bids.get(symbol) ?? new Map<number, PriceLevel>(),
+                asks: this.asks.get(symbol) ?? new Map<number, PriceLevel>(),
+            };
+        }
 
-        for (const priceLevel of this.bids.values()) {
-            if (!bestBid || priceLevel.price > bestBid.price) {
-                bestBid = priceLevel;
+        // Compatibility for callers that still request the whole book.
+        // Market-facing API endpoints should always pass a symbol.
+        return {
+            bids: this.combineBooks(this.bids),
+            asks: this.combineBooks(this.asks),
+        };
+    }
+
+    private combineBooks(
+        books: Map<string, Map<number, PriceLevel>>,
+    ): Map<number, PriceLevel> {
+        const combined = new Map<number, PriceLevel>();
+
+        for (const book of books.values()) {
+            for (const [price, level] of book) {
+                const existing = combined.get(price);
+
+                if (existing) {
+                    existing.orders.push(...level.orders);
+                } else {
+                    combined.set(price, {
+                        price,
+                        orders: [...level.orders],
+                    });
+                }
+            }
+        }
+
+        return combined;
+    }
+
+    getBestBid(symbol?: string): PriceLevel | undefined {
+        let bestBid: PriceLevel | undefined;
+        const books = symbol
+            ? [this.bids.get(symbol)].filter(
+                  (book): book is Map<number, PriceLevel> => book !== undefined,
+              )
+            : Array.from(this.bids.values());
+
+        for (const book of books) {
+            for (const priceLevel of book.values()) {
+                if (!bestBid || priceLevel.price > bestBid.price) {
+                    bestBid = priceLevel;
+                }
             }
         }
 
         return bestBid;
     }
 
-    getBestAsk(): PriceLevel | undefined {
+    getBestAsk(symbol?: string): PriceLevel | undefined {
         let bestAsk: PriceLevel | undefined;
-        for(const priceLevel of this.asks.values()){
-            if(!bestAsk || priceLevel.price < bestAsk.price){
-            bestAsk = priceLevel
+        const books = symbol
+            ? [this.asks.get(symbol)].filter(
+                  (book): book is Map<number, PriceLevel> => book !== undefined,
+              )
+            : Array.from(this.asks.values());
+
+        for (const book of books) {
+            for (const priceLevel of book.values()) {
+                if (!bestAsk || priceLevel.price < bestAsk.price) {
+                    bestAsk = priceLevel;
+                }
+            }
         }
-        }
-        return bestAsk
+
+        return bestAsk;
     }
-    
+
     matchOrder(order: Order): MatchResult {
-    const trades: ExecuteTrade[] = [];
+        const trades: ExecuteTrade[] = [];
+        let remainingQuantity = order.quantity;
 
-    let remainingQuantity = order.quantity;
+        if (order.side === "BUY") {
+            let remainingQuoteAmount = order.maxQuoteAmount;
 
-    if (order.side === "BUY") {
+            while (remainingQuantity > 0) {
+                const bestAsk = this.getBestAsk(order.symbol);
+                if (!bestAsk) break;
 
-        // Incoming order is BUY.
-        // Therefore, we look for a SELL order.
-
-        let remainingQuoteAmount = order.maxQuoteAmount;
-
-        while (remainingQuantity > 0) {
-
-            const bestAsk = this.getBestAsk();
-
-            if (!bestAsk) {
-                break;
-            }
-
-            // BUY price must be >= SELL price
-            if (
-                order.type === "LIMIT" &&
-                order.price < bestAsk.price
-            ) {
-                break;
-            }
-
-            const matchedOrder = bestAsk.orders[0];
-
-            if (!matchedOrder) {
-                break;
-            }
-
-            const tradeQuantity = Math.min(
-                remainingQuantity,
-                matchedOrder.quantity
-            );
-
-            // MARKET BUY must not spend more than maxQuoteAmount
-            if (
-                order.type === "MARKET" &&
-                remainingQuoteAmount !== undefined
-            ) {
-                const quoteAmount = unitsToAmount(
-                    "USDT",
-                    calculateQuoteAmount(
-                        matchedOrder.price,
-                        tradeQuantity
-                    )
-                );
-
-                if (quoteAmount > remainingQuoteAmount) {
+                if (order.type === "LIMIT" && order.price < bestAsk.price) {
                     break;
                 }
 
-                remainingQuoteAmount -= quoteAmount;
+                const asks = this.asks.get(order.symbol);
+                const matchedOrder = bestAsk.orders[0];
+                if (!matchedOrder) break;
+
+                let tradeQuantity = Math.min(
+                    remainingQuantity,
+                    matchedOrder.quantity,
+                );
+
+                // A MARKET BUY with a quote budget can only spend that budget.
+                // Find the largest affordable quantity at the current ask.
+                if (
+                    order.type === "MARKET" &&
+                    remainingQuoteAmount !== undefined
+                ) {
+                    let low = 0;
+                    let high = tradeQuantity;
+
+                    while (low < high) {
+                        const mid = Math.ceil((low + high) / 2);
+                        const quoteAmount = unitsToAmount(
+                            "USDT",
+                            calculateQuoteAmount(matchedOrder.price, mid),
+                        );
+
+                        if (quoteAmount <= remainingQuoteAmount) {
+                            low = mid;
+                        } else {
+                            high = mid - 1;
+                        }
+                    }
+
+                    tradeQuantity = low;
+                    if (tradeQuantity === 0) break;
+
+                    const quoteAmount = unitsToAmount(
+                        "USDT",
+                        calculateQuoteAmount(matchedOrder.price, tradeQuantity),
+                    );
+                    remainingQuoteAmount -= quoteAmount;
+                }
+
+                matchedOrder.quantity -= tradeQuantity;
+                remainingQuantity -= tradeQuantity;
+
+                if (matchedOrder.quantity === 0) {
+                    bestAsk.orders.shift();
+                }
+
+                if (bestAsk.orders.length === 0) {
+                    asks?.delete(bestAsk.price);
+                }
+
+                if (asks?.size === 0) {
+                    this.asks.delete(order.symbol);
+                }
+
+                trades.push({
+                    id: generateTradeId(),
+                    symbol: order.symbol,
+                    price: matchedOrder.price,
+                    quantity: tradeQuantity,
+                    buyOrderId: order.id,
+                    sellOrderId: matchedOrder.id,
+                    buyAccountId: order.accountId,
+                    sellAccountId: matchedOrder.accountId,
+                    timestamp: Date.now(),
+                });
             }
+
+            return { trades, remainingQuantity };
+        }
+
+        // Incoming SELL orders only match BUY orders for the same symbol.
+        while (remainingQuantity > 0) {
+            const bestBid = this.getBestBid(order.symbol);
+            if (!bestBid) break;
+
+            if (order.type === "LIMIT" && order.price > bestBid.price) {
+                break;
+            }
+
+            const bids = this.bids.get(order.symbol);
+            const matchedOrder = bestBid.orders[0];
+            if (!matchedOrder) break;
+
+            const tradeQuantity = Math.min(
+                remainingQuantity,
+                matchedOrder.quantity,
+            );
 
             matchedOrder.quantity -= tradeQuantity;
             remainingQuantity -= tradeQuantity;
 
-            // SELL order completely filled
             if (matchedOrder.quantity === 0) {
-                bestAsk.orders.shift();
+                bestBid.orders.shift();
             }
 
-            // No SELL orders left at this price
-            if (bestAsk.orders.length === 0) {
-                this.asks.delete(bestAsk.price);
+            if (bestBid.orders.length === 0) {
+                bids?.delete(bestBid.price);
             }
 
-            const trade: ExecuteTrade = {
+            if (bids?.size === 0) {
+                this.bids.delete(order.symbol);
+            }
+
+            trades.push({
                 id: generateTradeId(),
                 symbol: order.symbol,
                 price: matchedOrder.price,
                 quantity: tradeQuantity,
-                buyOrderId: order.id,
-                sellOrderId: matchedOrder.id,
-                buyAccountId: order.accountId,
-                sellAccountId: matchedOrder.accountId,
-                timestamp: Date.now()
-            };
-
-            trades.push(trade);
+                buyOrderId: matchedOrder.id,
+                sellOrderId: order.id,
+                buyAccountId: matchedOrder.accountId,
+                sellAccountId: order.accountId,
+                timestamp: Date.now(),
+            });
         }
 
-        return {
-            trades,
-            remainingQuantity
-        };
+        return { trades, remainingQuantity };
     }
 
-    // Incoming order is SELL.
-    // Therefore, we look for a BUY order.
-
-    while (remainingQuantity > 0) {
-
-        const bestBid = this.getBestBid();
-
-        if (!bestBid) {
-            break;
-        }
-
-        // SELL price must be <= BUY price
-        if (
-            order.type === "LIMIT" &&
-            order.price > bestBid.price
-        ) {
-            break;
-        }
-
-        const matchedOrder = bestBid.orders[0];
-
-        if (!matchedOrder) {
-            break;
-        }
-
-        const tradeQuantity = Math.min(
-            remainingQuantity,
-            matchedOrder.quantity
-        );
-
-        matchedOrder.quantity -= tradeQuantity;
-        remainingQuantity -= tradeQuantity;
-
-        // BUY order completely filled
-        if (matchedOrder.quantity === 0) {
-            bestBid.orders.shift();
-        }
-
-        // No BUY orders left at this price
-        if (bestBid.orders.length === 0) {
-            this.bids.delete(bestBid.price);
-        }
-
-        const trade: ExecuteTrade = {
-            id: generateTradeId(),
-            symbol: order.symbol,
-            price: matchedOrder.price,
-            quantity: tradeQuantity,
-            buyOrderId: matchedOrder.id,
-            sellOrderId: order.id,
-            buyAccountId: matchedOrder.accountId,
-            sellAccountId: order.accountId,
-            timestamp: Date.now()
-        };
-
-        trades.push(trade);
-    }
-
-    return {
-        trades,
-        remainingQuantity
-    };
-}
-
-    placeOrder (order: Order) : OrderResult {
+    placeOrder(order: Order): OrderResult {
         const validateError = validateOrder(order);
 
-        if(validateError){
+        if (validateError) {
             console.log("Order rejected: ", validateError);
             return {
                 status: "REJECTED",
                 trades: [],
-                remainingQuantity: order.quantity
+                remainingQuantity: order.quantity,
             };
         }
-        const result = this.matchOrder(order)
 
-        if(result.remainingQuantity > 0 && order.type === "LIMIT"){
+        const result = this.matchOrder(order);
+
+        if (result.remainingQuantity > 0 && order.type === "LIMIT") {
             this.addOrder({
                 ...order,
-                quantity: result.remainingQuantity
-            })
+                quantity: result.remainingQuantity,
+            });
         }
 
         let status: OrderStatus;
 
         if (result.remainingQuantity > 0 && order.type === "MARKET") {
-            status = result.trades.length > 0
-                ? "PARTIALLY_FILLED"
-                : "CANCELLED";
+            status = result.trades.length > 0 ? "PARTIALLY_FILLED" : "CANCELLED";
         } else if (result.trades.length === 0) {
             status = "OPEN";
         } else if (result.remainingQuantity > 0) {
@@ -242,76 +286,67 @@ export class OrderBook {
         } else {
             status = "FILLED";
         }
+
         return {
             status,
             trades: result.trades,
-            remainingQuantity: result.remainingQuantity
+            remainingQuantity: result.remainingQuantity,
         };
     }
 
-
     cancelOrder(orderId: string): CancelResult {
-
-        for (const [price, priceLevel] of this.bids) {
-
-            const orderIndex = priceLevel.orders.findIndex(
-                order => order.id === orderId
-            );
-
-            if (orderIndex !== -1) {
+        for (const [symbol, book] of this.bids) {
+            for (const [price, priceLevel] of book) {
+                const orderIndex = priceLevel.orders.findIndex(
+                    order => order.id === orderId,
+                );
+                if (orderIndex === -1) continue;
 
                 const order = priceLevel.orders[orderIndex]!;
-
                 priceLevel.orders.splice(orderIndex, 1);
 
-                if (priceLevel.orders.length === 0) {
-                    this.bids.delete(price);
-                }
+                if (priceLevel.orders.length === 0) book.delete(price);
+                if (book.size === 0) this.bids.delete(symbol);
 
                 return {
                     success: true,
-                    orderId: orderId,
+                    orderId,
                     accountId: order.accountId,
                     side: order.side,
                     price: order.price,
-                    remainingQuantity: order.quantity
+                    remainingQuantity: order.quantity,
                 };
             }
         }
 
-        for (const [price, priceLevel] of this.asks) {
-
-            const orderIndex = priceLevel.orders.findIndex(
-                order => order.id === orderId
-            );
-
-            if (orderIndex !== -1) {
+        for (const [symbol, book] of this.asks) {
+            for (const [price, priceLevel] of book) {
+                const orderIndex = priceLevel.orders.findIndex(
+                    order => order.id === orderId,
+                );
+                if (orderIndex === -1) continue;
 
                 const order = priceLevel.orders[orderIndex]!;
-
                 priceLevel.orders.splice(orderIndex, 1);
 
-                if (priceLevel.orders.length === 0) {
-                    this.asks.delete(price);
-                }
+                if (priceLevel.orders.length === 0) book.delete(price);
+                if (book.size === 0) this.asks.delete(symbol);
 
                 return {
                     success: true,
-                    orderId: orderId,
+                    orderId,
                     accountId: order.accountId,
                     side: order.side,
                     price: order.price,
-                    remainingQuantity: order.quantity
+                    remainingQuantity: order.quantity,
                 };
             }
         }
 
         return {
             success: false,
-            orderId: orderId,
-            remainingQuantity: 0
+            orderId,
+            remainingQuantity: 0,
         };
     }
-
-    
 }

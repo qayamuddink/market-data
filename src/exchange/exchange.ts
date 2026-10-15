@@ -1,20 +1,13 @@
 import { AccountManager } from "../account/account";
-import {
-    calculateQuoteAmount,
-    unitsToAmount
-} from "../account/asset";
+import { calculateQuoteAmount, unitsToAmount } from "../account/asset";
 import type { AccountPersistence } from "../database/persistence.types";
-
 import { EventBus } from "../events/event_bus";
 import { MarketData } from "../market/market_data";
 import { OrderBook } from "../market/order-book";
 import { validateOrder } from "../market/order_validation";
 import { OrderReservation } from "../settlement/order_reservation";
 import { Settlement } from "../settlement/settlement";
-import type {
-    Order,
-    OrderResult
-} from "../types/order";
+import type { Order, OrderResult } from "../types/order";
 import { OrderManager } from "./order_manager";
 
 export class Exchange {
@@ -25,12 +18,11 @@ export class Exchange {
     private orderManager: OrderManager;
     private eventBus: EventBus;
     private marketData: MarketData;
-
     private persistence: AccountPersistence | null;
 
     constructor(
         eventBus: EventBus,
-        persistence: AccountPersistence | null = null
+        persistence: AccountPersistence | null = null,
     ) {
         this.orderBook = new OrderBook();
         this.accountManager = new AccountManager();
@@ -41,38 +33,55 @@ export class Exchange {
         this.marketData = new MarketData();
         this.persistence = persistence;
 
-        this.eventBus.subscribe((event) => {
+        this.eventBus.subscribe(event => {
             if (event.type === "TradeExecuted") {
                 this.marketData.addTrade(event.trade);
             }
         });
     }
+
     async createAccount(accountId: string): Promise<void> {
-    if (this.persistence) {
-        await this.persistence.createAccount(accountId);
+        if (this.accountManager.getAccount(accountId)) {
+            throw new Error("Account already exists");
+        }
+
+        if (this.persistence) {
+            await this.persistence.createAccount(accountId);
+        }
+
+        this.accountManager.createAccount(accountId);
     }
 
-    this.accountManager.createAccount(accountId);
+    async restoreAccounts(): Promise<void> {
+        if (!this.persistence) return;
+
+        const accountIds = await this.persistence.getAccountIds();
+        const balances = await this.persistence.getBalances();
+
+        for (const accountId of accountIds) {
+            this.accountManager.restoreAccount({
+                id: accountId,
+                balances: new Map(),
+            });
+        }
+
+        for (const balance of balances) {
+            this.accountManager.restoreBalance(
+                balance.accountId,
+                balance.asset as "BTC" | "USDT",
+                balance.available,
+                balance.locked,
+            );
+        }
     }
 
-    addBalance(
-        accountId: string,
-        asset: "BTC" | "USDT",
-        amount: number
-    ): void {
-        this.accountManager.addBalance(
-            accountId,
-            asset,
-            amount
-        );
+    addBalance(accountId: string, asset: "BTC" | "USDT", amount: number): void {
+        this.accountManager.addBalance(accountId, asset, amount);
     }
 
     private publishOrderUpdated(orderId: string): void {
         const order = this.orderManager.getOrder(orderId);
-
-        if (!order) {
-            throw new Error("Order not found");
-        }
+        if (!order) throw new Error("Order not found");
 
         this.eventBus.publish({
             type: "OrderUpdated",
@@ -83,8 +92,8 @@ export class Exchange {
                 status: order.status,
                 originalQuantity: order.originalQuantity,
                 filledQuantity: order.filledQuantity,
-                quoteSpent: order.quoteSpent
-            }
+                quoteSpent: order.quoteSpent,
+            },
         });
     }
 
@@ -93,11 +102,10 @@ export class Exchange {
 
         if (validateError) {
             console.log("Order rejected: ", validateError);
-
             return {
                 status: "REJECTED",
                 trades: [],
-                remainingQuantity: order.quantity
+                remainingQuantity: order.quantity,
             };
         }
 
@@ -106,9 +114,7 @@ export class Exchange {
         }
 
         this.orderReservation.reserve(order);
-
         this.orderManager.addOrder(order);
-
         this.publishOrderUpdated(order.id);
 
         const result = this.orderBook.placeOrder(order);
@@ -117,188 +123,93 @@ export class Exchange {
             this.orderManager.updateOrderStatus(order.id, "CANCELLED");
         }
 
-        /*
-          The order book has now changed.
-          Publish the updated order book to subscribers.
-         */
         this.eventBus.publish({
             type: "OrderBookUpdated",
             symbol: order.symbol,
-            orderBook: this.orderBook.getBook()
+            orderBook: this.orderBook.getBook(order.symbol),
         });
 
-        /*
-          Process every trade.
-         */
         for (const trade of result.trades) {
-            /*
-              Settle the trade:
-             
-              BUY  -> receive BTC, spend USDT
-              SELL -> receive USDT, spend BTC
-             */
             this.settlement.settle(trade);
-
-            /*
-              Notify subscribers that a trade happened.
-             */
-
-            // this.marketData.addTrade(trade);
 
             this.eventBus.publish({
                 type: "TradeExecuted",
-                trade
+                trade,
             });
 
-            
+            const quoteUnits = calculateQuoteAmount(trade.price, trade.quantity);
+            const quoteAmount = unitsToAmount("USDT", quoteUnits);
+            this.orderManager.addQuoteSpent(trade.buyOrderId, quoteAmount);
 
-            /*
-              Calculate how much USDT was spent
-              by the BUY order for this trade.
-             */
-            const quoteUnits = calculateQuoteAmount(
+            const buyOrder = this.orderManager.getOrderData(trade.buyOrderId);
+            if (!buyOrder) throw new Error("Buy order not found");
+
+            this.orderReservation.releaseLimitBuyPriceImprovement(
+                buyOrder,
+                trade.quantity,
                 trade.price,
-                trade.quantity
             );
 
-            const quoteAmount = unitsToAmount(
-                "USDT",
-                quoteUnits
-            );
+            this.orderManager.processTrades(trade.buyOrderId, trade.quantity);
+            this.orderManager.processTrades(trade.sellOrderId, trade.quantity);
 
-            this.orderManager.addQuoteSpent(
-                trade.buyOrderId,
-                quoteAmount
-            );
-
-            /*
-              Update BUY order filled quantity.
-             */
-            this.orderManager.processTrades(
-                trade.buyOrderId,
-                trade.quantity
-            );
-
-            /*
-              Update SELL order filled quantity.
-             */
-            this.orderManager.processTrades(
-                trade.sellOrderId,
-                trade.quantity
-            );
-
-            /*
-              Notify subscribers that both orders changed.
-             */
-            this.publishOrderUpdated(
-                trade.buyOrderId
-            );
-
-            this.publishOrderUpdated(
-                trade.sellOrderId
-            );
+            this.publishOrderUpdated(trade.buyOrderId);
+            this.publishOrderUpdated(trade.sellOrderId);
         }
 
-        /*
-          Ticker
-         
-            We only need one ticker update after all
-          trades from this order have been processed.
-         
-          The last trade represents the latest traded price.
-         */
         if (result.trades.length > 0) {
-            const lastTrade =
-                result.trades[result.trades.length - 1]!;
-
-            const bestBid = this.getBestBid();
-            const bestAsk = this.getBestAsk();
+            const lastTrade = result.trades[result.trades.length - 1]!;
+            const bestBid = this.getBestBid(order.symbol);
+            const bestAsk = this.getBestAsk(order.symbol);
 
             this.eventBus.publish({
                 type: "TickerUpdated",
                 symbol: order.symbol,
                 lastPrice: lastTrade.price,
                 bestBid: bestBid?.price,
-                bestAsk: bestAsk?.price
+                bestAsk: bestAsk?.price,
             });
         }
 
-        /*
-          Release unused BUY reservation
-          after all trades have been processed.
-         */
-        if (result.trades.length > 0) {
-            const buyOrderId =
-                result.trades[0]!.buyOrderId;
-
-            const buyOrder =
-                this.orderManager.getOrderData(
-                    buyOrderId
-                );
-
-            if (!buyOrder) {
-                throw new Error("Buy order not found");
-            }
-
-            const managedBuyOrder =
-                this.orderManager.getOrder(
-                    buyOrderId
-                );
-
-            if (!managedBuyOrder) {
-                throw new Error("Buy order not found");
-            }
+        // Refund unused quote budget once, after all MARKET BUY fills are known.
+        if (
+            order.type === "MARKET" &&
+            order.side === "BUY" &&
+            result.trades.length > 0
+        ) {
+            const managedBuyOrder = this.orderManager.getOrder(order.id);
+            if (!managedBuyOrder) throw new Error("Buy order not found");
 
             this.orderReservation.releaseExcessBuyReservation(
-                buyOrder,
-                managedBuyOrder.quoteSpent
+                order,
+                managedBuyOrder.quoteSpent,
             );
         }
 
-        /*
-         * Release reservation for an unfilled MARKET order.
-         
-          If trades already happened, the unused BUY
-          reservation was already released above.
-         
-          Therefore, for MARKET BUY we only unlock the
-          full reservation when NO trade happened.
-         */
-        if (
-            order.type === "MARKET" &&
-            result.remainingQuantity > 0
-        ) {
-            /*
-              MARKET BUY with no trade:
-              release the complete maxQuoteAmount.
-             */
+        // Release reservations for any unfilled remainder of a MARKET order.
+        if (order.type === "MARKET" && result.remainingQuantity > 0) {
             if (
                 order.side === "BUY" &&
                 order.maxQuoteAmount !== undefined &&
                 result.trades.length === 0
             ) {
                 this.accountManager.unlockBalance(
-                   order.accountId,
+                    order.accountId,
                     "USDT",
-                    order.maxQuoteAmount
+                    order.maxQuoteAmount,
                 );
             }
 
-            /*
-              MARKET SELL with remaining quantity:
-              release the remaining BTC reservation.
-             */
             if (order.side === "SELL") {
-                const remainingQuantity =
-                    unitsToAmount(
-                        "BTC",
-                        result.remainingQuantity
-                    );
+                const remainingQuantity = unitsToAmount(
+                    "BTC",
+                    result.remainingQuantity,
+                );
 
                 this.accountManager.unlockBalance(
                     order.accountId,
                     "BTC",
-                    remainingQuantity
+                    remainingQuantity,
                 );
             }
         }
@@ -307,58 +218,23 @@ export class Exchange {
     }
 
     cancelOrder(orderId: string) {
-        const result =
-            this.orderBook.cancelOrder(orderId);
+        const result = this.orderBook.cancelOrder(orderId);
+        if (!result.success) return result;
 
-        if (!result.success) {
-            return result;
-        }
-
-        /*
-          BUY order:
-          unlock the USDT reserved for the
-          remaining quantity.
-         */
         if (result.side === "BUY") {
-            const quoteUnits =
-                calculateQuoteAmount(
-                    result.price!,
-                    result.remainingQuantity
-                );
-
-            const usdtAmount =
-                unitsToAmount(
-                    "USDT",
-                    quoteUnits
-                );
-
-            this.accountManager.unlockBalance(
-                result.accountId!,
-                "USDT",
-                usdtAmount
+            const quoteUnits = calculateQuoteAmount(
+                result.price!,
+                result.remainingQuantity,
             );
+            const usdtAmount = unitsToAmount("USDT", quoteUnits);
+            this.accountManager.unlockBalance(result.accountId!, "USDT", usdtAmount);
         } else {
-            /*
-              SELL order:
-              unlock the remaining BTC.
-             */
-            const btcAmount =
-                unitsToAmount(
-                    "BTC",
-                    result.remainingQuantity
-                );
-
-            this.accountManager.unlockBalance(
-                result.accountId!,
-                "BTC",
-                btcAmount
-            );
+            const btcAmount = unitsToAmount("BTC", result.remainingQuantity);
+            this.accountManager.unlockBalance(result.accountId!, "BTC", btcAmount);
         }
 
         this.orderManager.cancelOrder(orderId);
-
         this.publishOrderUpdated(orderId);
-
         return result;
     }
 
@@ -371,23 +247,20 @@ export class Exchange {
     }
 
     getAccount(accountId: string) {
-        return this.accountManager.getAccount(
-            accountId
-        );
+        return this.accountManager.getAccount(accountId);
     }
 
-    getOrderBook() {
-        return this.orderBook.getBook();
+    getOrderBook(symbol?: string) {
+        return this.orderBook.getBook(symbol);
     }
 
-    getBestBid() {
-        return this.orderBook.getBestBid();
+    getBestBid(symbol?: string) {
+        return this.orderBook.getBestBid(symbol);
     }
 
-    getBestAsk() {
-        return this.orderBook.getBestAsk();
+    getBestAsk(symbol?: string) {
+        return this.orderBook.getBestAsk(symbol);
     }
-
 
     getMarketData(): MarketData {
         return this.marketData;
